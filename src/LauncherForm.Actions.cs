@@ -71,6 +71,7 @@ internal sealed partial class LauncherForm
     private void ResultsKeyPress(object sender, KeyPressEventArgs e)
     {
         if (Char.IsControl(e.KeyChar)) return;
+        if (folderMode) SetWebSearchMode(false);
         search.Focus();
         search.SelectionStart = search.TextLength;
         search.SelectedText = e.KeyChar.ToString();
