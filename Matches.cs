@@ -75,6 +75,7 @@ internal static class Program
             if (LauncherForm.ListFolder(AppDomain.CurrentDomain.BaseDirectory).Count == 0) return 1;
             if (Ui.WebsiteIconPath("https://chatgpt.com/a") != Ui.WebsiteIconPath("https://chatgpt.com/b") ||
                 Ui.WebsiteIconPath("C:\\temp") != null) return 1;
+            if (!LauncherForm.CodexTerminalArguments("C:\\a b", "codex.exe").Contains("\"C:\\a b\"")) return 1;
             return 0;
         }
         catch { return 1; }
@@ -90,6 +91,7 @@ internal sealed class LauncherForm : Form
     private readonly ShortcutTile addTile;
     private readonly ListView results = new BufferedListView();
     private readonly ImageList resultRowHeight = new ImageList();
+    private readonly Label shortcutHint = new Label();
     private readonly Label status = new Label();
     private readonly Button settings = new Button();
     private readonly Font resultPathFont = new Font("Microsoft YaHei UI", 8.5F);
@@ -153,7 +155,7 @@ internal sealed class LauncherForm : Form
         searchCue.BringToFront();
 
         shortcuts.Location = new Point(10, 84);
-        shortcuts.Size = new Size(788, 420);
+        shortcuts.Size = new Size(788, 394);
         shortcuts.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
         shortcuts.BackColor = BackColor;
         shortcuts.Padding = new Padding(6, 0, 0, 0);
@@ -165,7 +167,7 @@ internal sealed class LauncherForm : Form
         shortcuts.DragDrop += ShortcutDragDrop;
 
         addTile = new ShortcutTile(null, true, delegate { addMenu.Show(Cursor.Position); });
-        addTile.Location = new Point(704, 404);
+        addTile.Location = new Point(704, 378);
         addTile.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
 
         results.Location = shortcuts.Location;
@@ -193,6 +195,12 @@ internal sealed class LauncherForm : Form
         results.MouseDoubleClick += ResultMouseDoubleClick;
         results.Visible = false;
 
+        shortcutHint.Location = new Point(16, 484);
+        shortcutHint.Size = new Size(730, 22);
+        shortcutHint.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+        shortcutHint.ForeColor = Color.FromArgb(115, 115, 115);
+        shortcutHint.Text = "F1  打开所在文件夹    F2  复制路径    F3  在当前目录打开 Codex Terminal";
+
         status.Location = new Point(16, 510);
         status.Size = new Size(700, 22);
         status.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
@@ -215,6 +223,7 @@ internal sealed class LauncherForm : Form
         Controls.Add(shortcuts);
         Controls.Add(addTile);
         Controls.Add(results);
+        Controls.Add(shortcutHint);
         Controls.Add(status);
         Controls.Add(settings);
         addTile.BringToFront();
@@ -273,6 +282,9 @@ internal sealed class LauncherForm : Form
 
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        if (keyData == Keys.F1) { RunFileAction(1); return true; }
+        if (keyData == Keys.F2) { RunFileAction(2); return true; }
+        if (keyData == Keys.F3) { RunFileAction(3); return true; }
         if (keyData == Keys.Tab && search.Focused)
         {
             SetWebSearchMode(!webSearchMode);
@@ -834,6 +846,43 @@ internal sealed class LauncherForm : Form
         if (results.SelectedItems.Count > 0) return ((SearchResult)results.SelectedItems[0].Tag).Path;
         if (results.Items.Count > 0) return ((SearchResult)results.Items[0].Tag).Path;
         return null;
+    }
+
+    private void RunFileAction(int action)
+    {
+        var path = SelectedPath() ?? (folderMode ? currentFolder : null);
+        if (path == null) { status.Text = "请先选择文件或文件夹"; return; }
+        if (action == 1) LocatePath(path);
+        else if (action == 2) CopyPath(path);
+        else OpenCodexTerminal(folderMode ? currentFolder : (Directory.Exists(path) ? path : Path.GetDirectoryName(path)));
+    }
+
+    internal static string CodexTerminalArguments(string directory, string codex)
+    {
+        return "-w new -d " + SearchClient.QuoteArgument(directory) + " " + SearchClient.QuoteArgument(codex);
+    }
+
+    private void OpenCodexTerminal(string directory)
+    {
+        if (String.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        {
+            status.Text = "无法确定 Codex 工作目录";
+            return;
+        }
+        var codex = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Programs", "OpenAI", "Codex", "bin", "codex.exe");
+        if (!File.Exists(codex)) codex = "codex.exe";
+        try
+        {
+            Process.Start(new ProcessStartInfo("wt.exe")
+            {
+                Arguments = CodexTerminalArguments(directory, codex),
+                WorkingDirectory = directory,
+                UseShellExecute = true
+            });
+            Hide();
+        }
+        catch (Exception ex) { status.Text = "无法打开 Codex Terminal：" + ex.Message; }
     }
 
     private void OpenSelected()
