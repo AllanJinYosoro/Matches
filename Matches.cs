@@ -267,7 +267,7 @@ internal sealed class LauncherForm : Form
     {
         if (keyData == Keys.Tab && search.Focused)
         {
-            SetWebSearchMode(true);
+            SetWebSearchMode(!webSearchMode);
             return true;
         }
         return base.ProcessCmdKey(ref message, keyData);
