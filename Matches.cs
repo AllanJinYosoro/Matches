@@ -248,7 +248,10 @@ internal sealed class LauncherForm : Form
 
         shortcutItems = ShortcutStore.Load();
         RebuildShortcuts();
-        keyboardHook = new KeyboardHook(ToggleLauncher);
+        keyboardHook = new KeyboardHook(delegate
+        {
+            if (!IsDisposed && IsHandleCreated) BeginInvoke((Action)ToggleLauncher);
+        });
         Ui.ApplyRoundedRegion(searchHost, 9);
         Ui.ApplyRoundedRegion(this, 12);
     }
@@ -299,9 +302,8 @@ internal sealed class LauncherForm : Form
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + Math.Max(24, area.Height / 8));
         if (!Visible) Show();
-        Native.SetForegroundWindow(Handle);
-        Activate();
         search.Select();
+        Native.FocusWindow(Handle, search.Handle);
         search.SelectAll();
     }
 
@@ -1473,6 +1475,42 @@ internal static class Native
 
     [DllImport("user32.dll")]
     internal static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, IntPtr processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint from, uint to, bool attach);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr window);
+
+    internal static void FocusWindow(IntPtr window, IntPtr control)
+    {
+        var currentThread = GetCurrentThreadId();
+        var foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+        var attached = foregroundThread != 0 && foregroundThread != currentThread &&
+                       AttachThreadInput(currentThread, foregroundThread, true);
+        try
+        {
+            SetForegroundWindow(window);
+            BringWindowToTop(window);
+            SetFocus(control);
+        }
+        finally
+        {
+            if (attached) AttachThreadInput(currentThread, foregroundThread, false);
+        }
+    }
 
     [DllImport("user32.dll")]
     internal static extern bool ReleaseCapture();
