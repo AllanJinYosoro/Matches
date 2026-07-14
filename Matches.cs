@@ -70,6 +70,7 @@ internal static class Program
                 !LauncherForm.WebSearchUrl("火柴").StartsWith("https://www.google.com/search", StringComparison.Ordinal)) return 1;
             var defaults = ShortcutStore.Defaults();
             if (defaults.Count != 2 || defaults[0].Name != "桌面" || defaults[1].Name != "下载") return 1;
+            if (LauncherForm.ListFolder(AppDomain.CurrentDomain.BaseDirectory).Count == 0) return 1;
             return 0;
         }
         catch { return 1; }
@@ -101,6 +102,8 @@ internal sealed class LauncherForm : Form
     private bool engineReady;
     private bool exiting;
     private bool webSearchMode;
+    private bool folderMode;
+    private string currentFolder;
 
     internal LauncherForm()
     {
@@ -274,8 +277,8 @@ internal sealed class LauncherForm : Form
                     return;
                 }
                 engineReady = task.Result == null;
-                status.Text = engineReady ? "输入关键词搜索本地文件" : task.Result;
-                if (engineReady && !webSearchMode && search.TextLength > 0) { searchTimer.Stop(); searchTimer.Start(); }
+                if (!webSearchMode && !folderMode) status.Text = engineReady ? "输入关键词搜索本地文件" : task.Result;
+                if (engineReady && !webSearchMode && !folderMode && search.TextLength > 0) { searchTimer.Stop(); searchTimer.Start(); }
             });
         });
     }
@@ -300,6 +303,8 @@ internal sealed class LauncherForm : Form
     private void SetWebSearchMode(bool enabled)
     {
         webSearchMode = enabled;
+        folderMode = false;
+        currentFolder = null;
         search.Clear();
         Native.SendMessageText(search.Handle, 0x1501, new IntPtr(1),
             enabled ? "网页搜索（bili 关键词）" : "搜索本地文件或应用");
@@ -335,6 +340,14 @@ internal sealed class LauncherForm : Form
             results.Visible = false;
             ClearResults();
             status.Text = "网页搜索：Enter 使用 Chrome；bili 关键词可搜索哔哩哔哩";
+            return;
+        }
+        if (folderMode)
+        {
+            shortcuts.Visible = false;
+            addTile.Visible = false;
+            results.Visible = true;
+            status.Text = "路径已变更，按 Enter 打开";
             return;
         }
         var searching = search.TextLength > 0;
@@ -404,6 +417,47 @@ internal sealed class LauncherForm : Form
         results.EndUpdate();
         if (results.Items.Count > 0) results.Items[0].Selected = true;
         status.Text = results.Items.Count == 0 ? "没有找到匹配项" : "找到 " + results.Items.Count + " 项（最多显示 100 项）";
+    }
+
+    internal static List<string> ListFolder(string path)
+    {
+        var directories = Directory.GetDirectories(path);
+        var files = Directory.GetFiles(path);
+        Array.Sort(directories, StringComparer.CurrentCultureIgnoreCase);
+        Array.Sort(files, StringComparer.CurrentCultureIgnoreCase);
+        var entries = new List<string>(directories.Length + files.Length);
+        entries.AddRange(directories);
+        entries.AddRange(files);
+        return entries;
+    }
+
+    private void BrowseFolder(string path)
+    {
+        try
+        {
+            path = path.Trim().Trim('"');
+            if (path.Length == 0) { status.Text = "请输入文件夹路径"; return; }
+            var fullPath = Path.GetFullPath(path);
+            var entries = ListFolder(fullPath);
+            webSearchMode = false;
+            folderMode = true;
+            currentFolder = fullPath;
+            search.Text = fullPath;
+            search.SelectionStart = search.TextLength;
+            shortcuts.Visible = false;
+            addTile.Visible = false;
+            results.Visible = true;
+            ShowResults(entries, String.Empty);
+            status.Text = fullPath + " · " + entries.Count + " 项";
+        }
+        catch (Exception ex) { status.Text = "无法读取文件夹：" + ex.Message; }
+    }
+
+    private void BrowseParentFolder()
+    {
+        if (!folderMode || currentFolder == null) return;
+        var parent = Directory.GetParent(currentFolder);
+        if (parent != null) BrowseFolder(parent.FullName);
     }
 
     private void ClearResults()
@@ -679,13 +733,14 @@ internal sealed class LauncherForm : Form
         else if (e.KeyCode == Keys.Enter)
         {
             if (webSearchMode) OpenWebSearch();
+            else if (folderMode) BrowseFolder(search.Text);
             else OpenSelected();
             e.Handled = true;
             e.SuppressKeyPress = true;
         }
         else if (e.KeyCode == Keys.Escape && (webSearchMode || search.TextLength > 0))
         {
-            if (webSearchMode) SetWebSearchMode(false);
+            if (webSearchMode || folderMode) SetWebSearchMode(false);
             else search.Clear();
             e.Handled = true;
         }
@@ -709,8 +764,14 @@ internal sealed class LauncherForm : Form
 
     private void ResultsKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter) { OpenSelected(); e.Handled = true; }
-        else if (e.KeyCode == Keys.Escape) { search.Clear(); search.Focus(); e.Handled = true; }
+        if (e.KeyCode == Keys.Right)
+        {
+            var path = SelectedPath();
+            if (path != null && Directory.Exists(path)) { BrowseFolder(path); e.Handled = true; }
+        }
+        else if (e.KeyCode == Keys.Left && folderMode) { BrowseParentFolder(); e.Handled = true; }
+        else if (e.KeyCode == Keys.Enter) { OpenSelected(); e.Handled = true; }
+        else if (e.KeyCode == Keys.Escape) { SetWebSearchMode(false); search.Focus(); e.Handled = true; }
     }
 
     private string SelectedPath()
