@@ -5,6 +5,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +73,8 @@ internal static class Program
             var defaults = ShortcutStore.Defaults();
             if (defaults.Count != 2 || defaults[0].Name != "桌面" || defaults[1].Name != "下载") return 1;
             if (LauncherForm.ListFolder(AppDomain.CurrentDomain.BaseDirectory).Count == 0) return 1;
+            if (Ui.WebsiteIconPath("https://chatgpt.com/a") != Ui.WebsiteIconPath("https://chatgpt.com/b") ||
+                Ui.WebsiteIconPath("C:\\temp") != null) return 1;
             return 0;
         }
         catch { return 1; }
@@ -105,6 +109,7 @@ internal sealed class LauncherForm : Form
     private bool webSearchMode;
     private bool folderMode;
     private string currentFolder;
+    private bool websiteIconsLoading;
 
     internal LauncherForm()
     {
@@ -279,6 +284,7 @@ internal sealed class LauncherForm : Form
     private void OnShown(object sender, EventArgs e)
     {
         ShowLauncher();
+        CacheWebsiteIcons();
         Task.Factory.StartNew<string>(delegate { return engine.Start(); }).ContinueWith(delegate(Task<string> task)
         {
             if (IsDisposed) return;
@@ -706,7 +712,35 @@ internal sealed class LauncherForm : Form
         shortcutItems.Add(item);
         ShortcutStore.Save(shortcutItems);
         RebuildShortcuts();
+        CacheWebsiteIcons();
         status.Text = "已添加快捷入口";
+    }
+
+    private void CacheWebsiteIcons()
+    {
+        if (websiteIconsLoading) return;
+        var urls = new List<string>();
+        foreach (var item in shortcutItems)
+        {
+            var path = Ui.WebsiteIconPath(item.Target);
+            if (path != null && !File.Exists(path)) urls.Add(item.Target);
+        }
+        if (urls.Count == 0) return;
+        websiteIconsLoading = true;
+        Task.Factory.StartNew(delegate
+        {
+            var changed = false;
+            foreach (var url in urls) if (Ui.CacheWebsiteIcon(url)) changed = true;
+            return changed;
+        }).ContinueWith(delegate(Task<bool> task)
+        {
+            if (IsDisposed) return;
+            BeginInvoke((Action)delegate
+            {
+                websiteIconsLoading = false;
+                if (!task.IsFaulted && task.Result) RebuildShortcuts();
+            });
+        });
     }
 
     private void RemoveShortcut(ShortcutItem item)
@@ -1119,6 +1153,83 @@ internal sealed class ShortcutTile : Control
 
 internal static class Ui
 {
+    internal static string WebsiteIconPath(string target)
+    {
+        Uri uri;
+        if (!Uri.TryCreate(target, UriKind.Absolute, out uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return null;
+        var origin = uri.GetLeftPart(UriPartial.Authority).ToLowerInvariant();
+        byte[] hash;
+        using (var sha = SHA256.Create()) hash = sha.ComputeHash(Encoding.UTF8.GetBytes(origin));
+        var name = BitConverter.ToString(hash).Replace("-", String.Empty).ToLowerInvariant() + ".png";
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Matches", "icons", name);
+    }
+
+    internal static bool CacheWebsiteIcon(string target)
+    {
+        var path = WebsiteIconPath(target);
+        if (path == null || File.Exists(path)) return false;
+        var uri = new Uri(target);
+        var origin = uri.GetLeftPart(UriPartial.Authority);
+        var sources = new[]
+        {
+            origin + "/favicon.ico",
+            "https://www.google.com/s2/favicons?domain_url=" + Uri.EscapeDataString(origin) + "&sz=64"
+        };
+        foreach (var source in sources)
+        {
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(source);
+                request.UserAgent = "Mozilla/5.0 Matches/1.0";
+                request.Timeout = 5000;
+                request.ReadWriteTimeout = 5000;
+                using (var response = request.GetResponse())
+                using (var input = response.GetResponseStream())
+                using (var data = new MemoryStream())
+                {
+                    var buffer = new byte[8192];
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if (data.Length + read > 2 * 1024 * 1024) throw new InvalidDataException("网站图标过大");
+                        data.Write(buffer, 0, read);
+                    }
+                    data.Position = 0;
+                    using (var image = Image.FromStream(data))
+                    using (var bitmap = new Bitmap(64, 64))
+                    using (var graphics = Graphics.FromImage(bitmap))
+                    {
+                        graphics.Clear(Color.Transparent);
+                        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                        graphics.DrawImage(image, new Rectangle(0, 0, 64, 64));
+                        Directory.CreateDirectory(Path.GetDirectoryName(path));
+                        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                }
+                return true;
+            }
+            catch { }
+        }
+        return false;
+    }
+
+    private static Image GetWebsiteImage(string target, int size)
+    {
+        var path = WebsiteIconPath(target);
+        if (path == null || !File.Exists(path)) return null;
+        try
+        {
+            using (var image = Image.FromFile(path)) return new Bitmap(image, new Size(size, size));
+        }
+        catch
+        {
+            try { File.Delete(path); }
+            catch { }
+            return null;
+        }
+    }
+
     internal static string ChromeExecutable()
     {
         var paths = new[]
@@ -1158,6 +1269,8 @@ internal static class Ui
     {
         try
         {
+            var websiteImage = GetWebsiteImage(target, size);
+            if (websiteImage != null) return websiteImage;
             Uri uri;
             if (Uri.TryCreate(target, UriKind.Absolute, out uri) &&
                 (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) target = ChromeExecutable();
