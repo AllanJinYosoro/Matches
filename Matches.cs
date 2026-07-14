@@ -78,7 +78,7 @@ internal sealed class LauncherForm : Form
     private readonly TextBox search = new TextBox();
     private readonly FlowLayoutPanel shortcuts = new FlowLayoutPanel();
     private readonly ShortcutTile addTile;
-    private readonly ListView results = new ListView();
+    private readonly ListView results = new BufferedListView();
     private readonly ImageList resultRowHeight = new ImageList();
     private readonly Label status = new Label();
     private readonly Button settings = new Button();
@@ -262,6 +262,7 @@ internal sealed class LauncherForm : Form
 
     internal void ShowLauncher()
     {
+        search.Clear();
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + Math.Max(24, area.Height / 8));
         if (!Visible) Show();
@@ -437,19 +438,27 @@ internal sealed class LauncherForm : Form
         var action = item == null ? 0 : ResultActionAt(e.Location, item.Bounds);
         if (index != hoveredResultIndex || action != hoveredResultAction)
         {
+            var oldIndex = hoveredResultIndex;
             hoveredResultIndex = index;
             hoveredResultAction = action;
             results.Cursor = action == 0 ? Cursors.Default : Cursors.Hand;
-            results.Invalidate();
+            InvalidateResult(oldIndex);
+            if (index != oldIndex) InvalidateResult(index);
         }
     }
 
     private void ResultMouseLeave(object sender, EventArgs e)
     {
+        var oldIndex = hoveredResultIndex;
         hoveredResultIndex = -1;
         hoveredResultAction = 0;
         results.Cursor = Cursors.Default;
-        results.Invalidate();
+        InvalidateResult(oldIndex);
+    }
+
+    private void InvalidateResult(int index)
+    {
+        if (index >= 0 && index < results.Items.Count) results.Invalidate(results.Items[index].Bounds);
     }
 
     private void ResultMouseDown(object sender, MouseEventArgs e)
@@ -658,6 +667,11 @@ internal sealed class LauncherForm : Form
         }
         base.Dispose(disposing);
     }
+}
+
+internal sealed class BufferedListView : ListView
+{
+    internal BufferedListView() { DoubleBuffered = true; }
 }
 
 internal sealed class SearchResult : IDisposable
