@@ -434,7 +434,7 @@ internal sealed class LauncherForm : Form
             results.Items.Add(item);
         }
         results.EndUpdate();
-        if (results.Items.Count > 0) results.Items[0].Selected = true;
+        if (results.Items.Count > 0) { results.Items[0].Selected = true; results.Items[0].Focused = true; }
         status.Text = results.Items.Count == 0 ? "没有找到匹配项" : "找到 " + results.Items.Count + " 项（最多显示 100 项）";
     }
 
