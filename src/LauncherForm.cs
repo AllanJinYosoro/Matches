@@ -57,6 +57,7 @@ internal sealed partial class LauncherForm : Form
         hotkeys = HotkeyStore.Load();
 
         Text = "Matches";
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         ClientSize = new Size(808, 540);
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.None;
@@ -183,7 +184,7 @@ internal sealed partial class LauncherForm : Form
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("显示 Matches", null, delegate { ShowLauncher(); });
         trayMenu.Items.Add("退出", null, delegate { ExitApplication(); });
-        tray.Icon = SystemIcons.Application;
+        tray.Icon = Icon;
         tray.Text = "Matches";
         tray.ContextMenuStrip = trayMenu;
         tray.DoubleClick += delegate { ShowLauncher(); };
