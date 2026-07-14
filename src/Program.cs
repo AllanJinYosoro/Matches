@@ -58,7 +58,22 @@ internal static class Program
             var paths = SearchClient.ParseResults("\uFEFFC:\\测试 文件.txt\r\nD:\\目录\r\n");
             if (paths.Count != 2 || paths[0] != "C:\\测试 文件.txt" || paths[1] != "D:\\目录") return 1;
             var arguments = SearchClient.BuildArguments("Matches", "C:\\temp\\result.txt");
-            if (arguments.Contains("name:") || !arguments.Contains("\"Matches\"")) return 1;
+            if (arguments.Contains("name:") || !arguments.Contains("-n 500") || !arguments.Contains("\"Matches\"")) return 1;
+            var ranked = SearchClient.RankResults("MonoCloud", new List<string>
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MonoCloud"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "WinSxS", "MonoCloud.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "MonoCloud", "MonoCloud.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu), "Programs", "MonoCloud.lnk")
+            }, 100);
+            if (!ranked[0].EndsWith("MonoCloud.lnk", StringComparison.OrdinalIgnoreCase) ||
+                ranked[ranked.Count - 1].IndexOf("WinSxS", StringComparison.OrdinalIgnoreCase) < 0) return 1;
+            var explicitProgramData = SearchClient.RankResults("ProgramData", new List<string>
+            {
+                Path.Combine(Path.GetTempPath(), "ProgramData.txt"),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
+            }, 100);
+            if (explicitProgramData[0] != Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)) return 1;
             if (!LauncherForm.IsUninstallQuery(" 卸载 ") || LauncherForm.IsUninstallQuery("卸载程序")) return 1;
             if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("重启") != "restart" ||
                 LauncherForm.PowerActionFor("重新启动") != null || LauncherForm.PowerArguments("restart") != "/r /t 0") return 1;

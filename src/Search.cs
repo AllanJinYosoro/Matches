@@ -41,7 +41,7 @@ internal sealed class SearchClient
             process.WaitForExit();
             if (process.ExitCode == 8) throw new InvalidOperationException("Everything 实例尚未就绪");
             if (process.ExitCode != 0) throw new InvalidOperationException(error.Length == 0 ? "ES 错误 " + process.ExitCode : error.Trim());
-            return ParseResults(File.Exists(outputFile) ? File.ReadAllText(outputFile, Encoding.UTF8) : String.Empty);
+            return RankResults(query, ParseResults(File.Exists(outputFile) ? File.ReadAllText(outputFile, Encoding.UTF8) : String.Empty), 100);
         }
         finally
         {
@@ -63,8 +63,110 @@ internal sealed class SearchClient
 
     internal static string BuildArguments(string query, string outputFile)
     {
-        return "-instance Matches -n 100 -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
+        // ponytail: 500 candidates keep per-keystroke sorting cheap; raise this if launchers are measurably missed.
+        return "-instance Matches -n 500 -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
                " -utf8-bom " + QuoteArgument(query);
+    }
+
+    internal static List<string> RankResults(string query, List<string> paths, int maximum)
+    {
+        var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < paths.Count; index++)
+        {
+            if (!order.ContainsKey(paths[index])) order.Add(paths[index], index);
+            scores[paths[index]] = RankScore(query, paths[index]);
+        }
+        paths.Sort(delegate(string left, string right)
+        {
+            var ranked = scores[right].CompareTo(scores[left]);
+            return ranked != 0 ? ranked : order[left].CompareTo(order[right]);
+        });
+        if (paths.Count > maximum) paths.RemoveRange(maximum, paths.Count - maximum);
+        return paths;
+    }
+
+    private static int RankScore(string query, string path)
+    {
+        query = query.Trim().Trim('"');
+        var clean = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var name = Path.GetFileName(clean);
+        var extension = Path.GetExtension(name);
+        var launchable = IsLaunchable(extension);
+        var comparableName = launchable ? Path.GetFileNameWithoutExtension(name) : name;
+        var score = String.Equals(comparableName, query, StringComparison.OrdinalIgnoreCase) ? 120 :
+            comparableName.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 40 : 0;
+        if (launchable) score += 50;
+
+        var commonStart = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
+        var userStart = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
+        var commonDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
+        var userDesktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        if (IsUnder(path, commonStart) || IsUnder(path, userStart)) return score + 120;
+        if (IsUnder(path, commonDesktop) || IsUnder(path, userDesktop)) return score + 100;
+
+        if (IsDeepSystemPath(path) && !MentionsAny(query, "$Recycle.Bin", "System Volume Information", "Recovery",
+            "Package Cache", "WER", "WinSxS", "Installer", "servicing", "assembly", "WindowsApps", "Temp", "Packages"))
+            return score - 160;
+        if (IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)) &&
+            !MentionsAny(query, "ProgramData")) return score - 100;
+        if (IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.Windows)) &&
+            !MentionsAny(query, "Windows")) return score - 100;
+        if ((IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)) ||
+            IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData))) &&
+            !MentionsAny(query, "AppData")) return score - 60;
+        if ((IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) ||
+            IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86))) &&
+            !MentionsAny(query, "Program Files")) return score - 50;
+        return score;
+    }
+
+    private static bool IsLaunchable(string extension)
+    {
+        return String.Equals(extension, ".lnk", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".url", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".appref-ms", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".com", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".bat", StringComparison.OrdinalIgnoreCase) ||
+               String.Equals(extension, ".cmd", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeepSystemPath(string path)
+    {
+        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var root = Path.GetPathRoot(path) ?? String.Empty;
+        return IsUnder(path, Path.Combine(root, "$Recycle.Bin")) ||
+               IsUnder(path, Path.Combine(root, "System Volume Information")) ||
+               IsUnder(path, Path.Combine(root, "Recovery")) ||
+               IsUnder(path, Path.Combine(programData, "Package Cache")) ||
+               IsUnder(path, Path.Combine(programData, "Microsoft", "Windows", "WER")) ||
+               IsUnder(path, Path.Combine(windows, "WinSxS")) ||
+               IsUnder(path, Path.Combine(windows, "Installer")) ||
+               IsUnder(path, Path.Combine(windows, "servicing")) ||
+               IsUnder(path, Path.Combine(windows, "assembly")) ||
+               IsUnder(path, Path.Combine(programFiles, "WindowsApps")) ||
+               IsUnder(path, Path.Combine(localAppData, "Temp")) ||
+               IsUnder(path, Path.Combine(localAppData, "Packages"));
+    }
+
+    private static bool IsUnder(string path, string directory)
+    {
+        if (directory.Length == 0) return false;
+        directory = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return String.Equals(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), directory, StringComparison.OrdinalIgnoreCase) ||
+               (path.Length > directory.Length && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase) &&
+                (path[directory.Length] == Path.DirectorySeparatorChar || path[directory.Length] == Path.AltDirectorySeparatorChar));
+    }
+
+    private static bool MentionsAny(string query, params string[] names)
+    {
+        foreach (var name in names)
+            if (query.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        return false;
     }
 
     internal static List<string> ParseResults(string output)
