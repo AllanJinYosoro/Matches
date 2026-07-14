@@ -77,8 +77,10 @@ internal static class Program
                 Ui.WebsiteIconPath("C:\\temp") != null) return 1;
             if (!LauncherForm.CodexTerminalArguments("C:\\a b", "codex.exe").Contains("\"C:\\a b\"")) return 1;
             HotkeySettings testedHotkeys;
-            if (!HotkeyStore.TryParse(new[] { "F4", "F5", "F6" }, out testedHotkeys) || testedHotkeys.Copy != Keys.F5 ||
-                HotkeyStore.TryParse(new[] { "F4", "F4", "F6" }, out testedHotkeys)) return 1;
+            var controlL = (Keys.Control | Keys.L).ToString();
+            if (!HotkeyStore.TryParse(new[] { controlL, "F5", "F6" }, out testedHotkeys) ||
+                testedHotkeys.Locate != (Keys.Control | Keys.L) || HotkeyStore.Format(testedHotkeys.Locate) != "Ctrl+L" ||
+                HotkeyStore.TryParse(new[] { controlL, controlL, "F6" }, out testedHotkeys)) return 1;
             return 0;
         }
         catch { return 1; }
@@ -793,8 +795,8 @@ internal sealed class LauncherForm : Form
 
     private void UpdateShortcutHint()
     {
-        shortcutHint.Text = hotkeys.Locate + "  打开所在文件夹    " + hotkeys.Copy +
-            "  复制路径    " + hotkeys.Codex + "  在当前目录打开 Codex Terminal";
+        shortcutHint.Text = HotkeyStore.Format(hotkeys.Locate) + "  打开所在文件夹    " + HotkeyStore.Format(hotkeys.Copy) +
+            "  复制路径    " + HotkeyStore.Format(hotkeys.Codex) + "  在当前目录打开 Codex Terminal";
     }
 
     private void OpenShortcut(ShortcutItem item)
@@ -1073,15 +1075,18 @@ internal sealed class HotkeySettings
 
 internal sealed class HotkeySettingsDialog : Form
 {
-    private readonly ComboBox locate = new ComboBox();
-    private readonly ComboBox copy = new ComboBox();
-    private readonly ComboBox codex = new ComboBox();
+    private readonly HotkeyBox locate;
+    private readonly HotkeyBox copy;
+    private readonly HotkeyBox codex;
     internal HotkeySettings Settings { get; private set; }
 
     internal HotkeySettingsDialog(HotkeySettings current)
     {
+        locate = new HotkeyBox(current.Locate);
+        copy = new HotkeyBox(current.Copy);
+        codex = new HotkeyBox(current.Codex);
         Text = "快捷键设置";
-        ClientSize = new Size(390, 188);
+        ClientSize = new Size(390, 216);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -1089,14 +1094,20 @@ internal sealed class HotkeySettingsDialog : Form
         ShowInTaskbar = false;
         Font = new Font("Microsoft YaHei UI", 9F);
 
-        AddRow("打开所在文件夹", locate, 18, current.Locate);
-        AddRow("复制路径", copy, 58, current.Copy);
-        AddRow("打开 Codex Terminal", codex, 98, current.Codex);
-        var okay = new Button { Text = "保存", Location = new Point(214, 143), Size = new Size(74, 28) };
-        var cancel = new Button { Text = "取消", Location = new Point(296, 143), Size = new Size(74, 28), DialogResult = DialogResult.Cancel };
+        Controls.Add(new Label { Text = "点击输入框，然后直接按下新的快捷键", Location = new Point(18, 12), Size = new Size(350, 22) });
+        AddRow("打开所在文件夹", locate, 42);
+        AddRow("复制路径", copy, 82);
+        AddRow("打开 Codex Terminal", codex, 122);
+        var okay = new Button { Text = "保存", Location = new Point(214, 171), Size = new Size(74, 28) };
+        var cancel = new Button { Text = "取消", Location = new Point(296, 171), Size = new Size(74, 28), DialogResult = DialogResult.Cancel };
         okay.Click += delegate
         {
-            var value = new HotkeySettings((Keys)locate.SelectedItem, (Keys)copy.SelectedItem, (Keys)codex.SelectedItem);
+            var value = new HotkeySettings(locate.Hotkey, copy.Hotkey, codex.Hotkey);
+            if (!HotkeyStore.IsValid(value.Locate) || !HotkeyStore.IsValid(value.Copy) || !HotkeyStore.IsValid(value.Codex))
+            {
+                MessageBox.Show(this, "字母、数字或方向键需要搭配 Ctrl、Alt 或 Shift。", "Matches", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             if (value.Locate == value.Copy || value.Locate == value.Codex || value.Copy == value.Codex)
             {
                 MessageBox.Show(this, "三个快捷键不能重复。", "Matches", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1111,15 +1122,39 @@ internal sealed class HotkeySettingsDialog : Form
         CancelButton = cancel;
     }
 
-    private void AddRow(string text, ComboBox box, int top, Keys selected)
+    private void AddRow(string text, HotkeyBox box, int top)
     {
         Controls.Add(new Label { Text = text, Location = new Point(18, top + 5), Size = new Size(190, 22) });
         box.Location = new Point(220, top);
         box.Size = new Size(150, 25);
-        box.DropDownStyle = ComboBoxStyle.DropDownList;
-        for (var key = Keys.F1; key <= Keys.F12; key++) box.Items.Add(key);
-        box.SelectedItem = selected;
         Controls.Add(box);
+    }
+}
+
+internal sealed class HotkeyBox : TextBox
+{
+    internal Keys Hotkey { get; private set; }
+
+    internal HotkeyBox(Keys hotkey)
+    {
+        ReadOnly = true;
+        BackColor = SystemColors.Window;
+        ShortcutsEnabled = false;
+        Hotkey = hotkey;
+        Text = HotkeyStore.Format(hotkey);
+        TextAlign = HorizontalAlignment.Center;
+    }
+
+    protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+    {
+        if (keyData == Keys.Enter || keyData == Keys.Escape || keyData == Keys.Tab || keyData == (Keys.Shift | Keys.Tab))
+            return base.ProcessCmdKey(ref message, keyData);
+        var key = keyData & Keys.KeyCode;
+        if (key == Keys.ControlKey || key == Keys.ShiftKey || key == Keys.Menu) return true;
+        Hotkey = keyData;
+        Text = HotkeyStore.Format(keyData);
+        SelectAll();
+        return true;
     }
 }
 
@@ -1150,10 +1185,30 @@ internal static class HotkeyStore
         settings = null;
         Keys locate, copy, codex;
         if (lines.Length != 3 || !Enum.TryParse(lines[0], out locate) || !Enum.TryParse(lines[1], out copy) ||
-            !Enum.TryParse(lines[2], out codex) || locate < Keys.F1 || locate > Keys.F12 || copy < Keys.F1 ||
-            copy > Keys.F12 || codex < Keys.F1 || codex > Keys.F12 || locate == copy || locate == codex || copy == codex) return false;
+            !Enum.TryParse(lines[2], out codex) || !IsValid(locate) || !IsValid(copy) || !IsValid(codex) ||
+            locate == copy || locate == codex || copy == codex) return false;
         settings = new HotkeySettings(locate, copy, codex);
         return true;
+    }
+
+    internal static bool IsValid(Keys hotkey)
+    {
+        var key = hotkey & Keys.KeyCode;
+        if (key == Keys.None || key == Keys.ControlKey || key == Keys.LControlKey || key == Keys.RControlKey ||
+            key == Keys.ShiftKey || key == Keys.LShiftKey || key == Keys.RShiftKey || key == Keys.Menu ||
+            key == Keys.LMenu || key == Keys.RMenu) return false;
+        return (key >= Keys.F1 && key <= Keys.F24) || (hotkey & Keys.Modifiers) != Keys.None;
+    }
+
+    internal static string Format(Keys hotkey)
+    {
+        var parts = new List<string>();
+        if ((hotkey & Keys.Control) != 0) parts.Add("Ctrl");
+        if ((hotkey & Keys.Alt) != 0) parts.Add("Alt");
+        if ((hotkey & Keys.Shift) != 0) parts.Add("Shift");
+        var key = hotkey & Keys.KeyCode;
+        parts.Add(key >= Keys.D0 && key <= Keys.D9 ? ((int)key - (int)Keys.D0).ToString() : key.ToString());
+        return String.Join("+", parts.ToArray());
     }
 }
 
