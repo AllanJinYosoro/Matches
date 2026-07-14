@@ -62,6 +62,10 @@ internal static class Program
             if (!LauncherForm.IsUninstallQuery(" 卸载 ") || LauncherForm.IsUninstallQuery("卸载程序")) return 1;
             if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("重启") != "restart" ||
                 LauncherForm.PowerActionFor("重新启动") != null || LauncherForm.PowerArguments("restart") != "/r /t 0") return 1;
+            using (var shutdown = Ui.PowerImage("shutdown", 32))
+            using (var restart = Ui.PowerImage("restart", 32))
+                if (shutdown.Size != new Size(32, 32) || restart.Size != new Size(32, 32) ||
+                    ((Bitmap)shutdown).GetPixel(16, 4).ToArgb() == ((Bitmap)restart).GetPixel(16, 4).ToArgb()) return 1;
             if (!File.Exists(Path.Combine(Environment.SystemDirectory, "appwiz.cpl"))) return 1;
             var row = new Rectangle(0, 0, 770, 48);
             if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
@@ -558,7 +562,8 @@ internal sealed class LauncherForm : Form
     {
         var result = e.Item.Tag as SearchResult;
         if (result == null) return;
-        if (result.Image == null) result.Image = Ui.GetImage(result.Path, 32);
+        if (result.Image == null) result.Image = result.PowerAction == null
+            ? Ui.GetImage(result.Path, 32) : Ui.PowerImage(result.PowerAction, 32);
         var selected = e.Item.Selected;
         var bounds = e.Bounds;
         e.Graphics.DrawImage(result.Image, new Rectangle(bounds.Left + 12, bounds.Top + 8, 32, 32));
@@ -1765,6 +1770,37 @@ internal static class Ui
             control.Region = new Region(path);
             if (old != null) old.Dispose();
         }
+    }
+
+    internal static Image PowerImage(string action, int size)
+    {
+        const int canvas = 128;
+        var source = new Bitmap(canvas, canvas);
+        using (var graphics = Graphics.FromImage(source))
+        using (var pen = new Pen(action == "restart" ? Color.FromArgb(43, 137, 230) : Color.FromArgb(232, 78, 68), 15F))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            pen.StartCap = pen.EndCap = LineCap.Round;
+            if (action == "restart")
+            {
+                graphics.DrawArc(pen, 22, 22, 84, 84, -58, 285);
+                using (var brush = new SolidBrush(pen.Color))
+                    graphics.FillPolygon(brush, new[] { new Point(17, 29), new Point(49, 25), new Point(33, 56) });
+            }
+            else
+            {
+                graphics.DrawArc(pen, 23, 23, 82, 82, -43, 266);
+                graphics.DrawLine(pen, 64, 13, 64, 61);
+            }
+        }
+        var image = new Bitmap(size, size);
+        using (var graphics = Graphics.FromImage(image))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(source, new Rectangle(0, 0, size, size));
+        }
+        source.Dispose();
+        return image;
     }
 
     internal static Image GetImage(string target, int size)
