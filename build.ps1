@@ -47,7 +47,8 @@ if (Test-Path -LiteralPath $language) { Copy-Item -LiteralPath $language -Destin
 Copy-Item -LiteralPath (Join-Path $root 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $vendor 'LICENSE.txt') -Force
 
 $exe = Join-Path $dist 'Matches.exe'
-& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /out:$exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:$windowsBase /reference:$presentationCore /reference:$systemXaml (Join-Path $root 'Matches.cs')
+$sources = Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -Filter '*.cs' | Sort-Object FullName | ForEach-Object FullName
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 /out:$exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:$windowsBase /reference:$presentationCore /reference:$systemXaml $sources
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 
 $check = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru -WindowStyle Hidden
