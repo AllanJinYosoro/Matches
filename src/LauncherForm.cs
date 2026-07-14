@@ -187,6 +187,7 @@ internal sealed partial class LauncherForm : Form
         search.TextChanged += SearchTextChanged;
         search.KeyDown += SearchKeyDown;
         results.KeyDown += ResultsKeyDown;
+        results.KeyPress += ResultsKeyPress;
         Resize += delegate
         {
             Ui.ApplyRoundedRegion(this, 12);

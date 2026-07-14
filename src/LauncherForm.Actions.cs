@@ -66,6 +66,15 @@ internal sealed partial class LauncherForm
         else if (e.KeyCode == Keys.Escape) { SetWebSearchMode(false); search.Focus(); e.Handled = true; }
     }
 
+    private void ResultsKeyPress(object sender, KeyPressEventArgs e)
+    {
+        if (Char.IsControl(e.KeyChar)) return;
+        search.Focus();
+        search.SelectionStart = search.TextLength;
+        search.SelectedText = e.KeyChar.ToString();
+        e.Handled = true;
+    }
+
     private string SelectedPath()
     {
         var result = SelectedResult();
