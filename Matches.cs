@@ -305,9 +305,10 @@ internal sealed class LauncherForm : Form
         webSearchMode = enabled;
         folderMode = false;
         currentFolder = null;
+        search.ForeColor = enabled ? Color.FromArgb(0, 102, 204) : SystemColors.WindowText;
         search.Clear();
         Native.SendMessageText(search.Handle, 0x1501, new IntPtr(1),
-            enabled ? "网页搜索（bili 关键词）" : "搜索本地文件或应用");
+            enabled ? "网页搜索" : "搜索本地文件或应用");
         shortcuts.Visible = true;
         addTile.Visible = true;
         results.Visible = false;
@@ -339,7 +340,7 @@ internal sealed class LauncherForm : Form
             addTile.Visible = true;
             results.Visible = false;
             ClearResults();
-            status.Text = "网页搜索：Enter 使用 Chrome；bili 关键词可搜索哔哩哔哩";
+            status.Text = "输入关键词后按 Enter，用 Chrome 搜索";
             return;
         }
         if (folderMode)
