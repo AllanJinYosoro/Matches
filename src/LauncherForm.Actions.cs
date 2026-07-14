@@ -18,8 +18,10 @@ internal sealed partial class LauncherForm
     {
         if (!webSearchMode && e.KeyCode == Keys.Down && results.Items.Count > 0)
         {
+            var next = results.Items[Math.Min(1, results.Items.Count - 1)];
+            next.Selected = true;
+            next.Focused = true;
             results.Focus();
-            results.Items[0].Selected = true;
             e.Handled = true;
         }
         else if (e.KeyCode == Keys.Enter)
