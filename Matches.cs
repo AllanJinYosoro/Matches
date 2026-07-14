@@ -60,6 +60,8 @@ internal static class Program
             var arguments = SearchClient.BuildArguments("Matches", "C:\\temp\\result.txt");
             if (arguments.Contains("name:") || !arguments.Contains("\"Matches\"")) return 1;
             if (!LauncherForm.IsUninstallQuery(" 卸载 ") || LauncherForm.IsUninstallQuery("卸载程序")) return 1;
+            if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("重启") != "restart" ||
+                LauncherForm.PowerActionFor("重新启动") != null || LauncherForm.PowerArguments("restart") != "/r /t 0") return 1;
             if (!File.Exists(Path.Combine(Environment.SystemDirectory, "appwiz.cpl"))) return 1;
             var row = new Rectangle(0, 0, 770, 48);
             if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
@@ -442,10 +444,32 @@ internal sealed class LauncherForm : Form
         return String.Equals(query.Trim(), "卸载", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string PowerActionFor(string query)
+    {
+        query = query.Trim();
+        if (query == "关机") return "shutdown";
+        if (query == "重启") return "restart";
+        return null;
+    }
+
+    internal static string PowerArguments(string action)
+    {
+        return action == "restart" ? "/r /t 0" : "/s /t 0";
+    }
+
     private void ShowResults(List<string> paths, string query)
     {
         results.BeginUpdate();
         ClearResults();
+        var powerAction = PowerActionFor(query);
+        if (powerAction != null)
+        {
+            var path = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+            var name = powerAction == "restart" ? "重启" : "关机";
+            var item = new ListViewItem(name);
+            item.Tag = new SearchResult(path, name, "Windows 电源操作", powerAction);
+            results.Items.Add(item);
+        }
         if (IsUninstallQuery(query))
         {
             var path = Path.Combine(Environment.SystemDirectory, "appwiz.cpl");
@@ -870,8 +894,14 @@ internal sealed class LauncherForm : Form
 
     private string SelectedPath()
     {
-        if (results.SelectedItems.Count > 0) return ((SearchResult)results.SelectedItems[0].Tag).Path;
-        if (results.Items.Count > 0) return ((SearchResult)results.Items[0].Tag).Path;
+        var result = SelectedResult();
+        return result == null ? null : result.Path;
+    }
+
+    private SearchResult SelectedResult()
+    {
+        if (results.SelectedItems.Count > 0) return (SearchResult)results.SelectedItems[0].Tag;
+        if (results.Items.Count > 0) return (SearchResult)results.Items[0].Tag;
         return null;
     }
 
@@ -914,10 +944,29 @@ internal sealed class LauncherForm : Form
 
     private void OpenSelected()
     {
-        var path = SelectedPath();
-        if (path == null) return;
-        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); Hide(); }
+        var result = SelectedResult();
+        if (result == null) return;
+        if (result.PowerAction != null) { ConfirmPowerAction(result.PowerAction); return; }
+        try { Process.Start(new ProcessStartInfo(result.Path) { UseShellExecute = true }); Hide(); }
         catch (Exception ex) { status.Text = "无法打开：" + ex.Message; }
+    }
+
+    private void ConfirmPowerAction(string action)
+    {
+        var name = action == "restart" ? "重启" : "关机";
+        if (MessageBox.Show(this, "确定要" + name + " Windows？", name, MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning) != DialogResult.OK) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"))
+            {
+                Arguments = PowerArguments(action),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            Hide();
+        }
+        catch (Exception ex) { status.Text = "无法执行" + name + "：" + ex.Message; }
     }
 
     private void LocatePath(string path)
@@ -981,13 +1030,15 @@ internal sealed class SearchResult : IDisposable
     internal readonly string Path;
     internal readonly string Name;
     internal readonly string Directory;
+    internal readonly string PowerAction;
     internal Image Image;
 
-    internal SearchResult(string path, string name, string directory)
+    internal SearchResult(string path, string name, string directory, string powerAction = null)
     {
         Path = path;
         Name = name;
         Directory = directory;
+        PowerAction = powerAction;
     }
 
     public void Dispose()
