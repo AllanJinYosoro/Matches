@@ -66,6 +66,10 @@ internal static class Program
             var saved = ShortcutStore.Serialize(new ShortcutItem("测试", "C:\\目录\\程序.exe"));
             ShortcutItem restored;
             if (!ShortcutStore.TryParse(saved, out restored) || restored.Name != "测试" || restored.Target != "C:\\目录\\程序.exe") return 1;
+            if (!LauncherForm.WebSearchUrl("bili 火柴").StartsWith("https://search.bilibili.com/", StringComparison.Ordinal) ||
+                !LauncherForm.WebSearchUrl("火柴").StartsWith("https://www.google.com/search", StringComparison.Ordinal)) return 1;
+            var defaults = ShortcutStore.Defaults();
+            if (defaults.Count != 2 || defaults[0].Name != "桌面" || defaults[1].Name != "下载") return 1;
             return 0;
         }
         catch { return 1; }
@@ -96,6 +100,7 @@ internal sealed class LauncherForm : Form
     private int hoveredResultAction;
     private bool engineReady;
     private bool exiting;
+    private bool webSearchMode;
 
     internal LauncherForm()
     {
@@ -136,6 +141,10 @@ internal sealed class LauncherForm : Form
         shortcuts.Padding = new Padding(6, 0, 0, 0);
         shortcuts.WrapContents = true;
         shortcuts.AutoScroll = true;
+        shortcuts.AllowDrop = true;
+        shortcuts.DragEnter += ShortcutDragOver;
+        shortcuts.DragOver += ShortcutDragOver;
+        shortcuts.DragDrop += ShortcutDragDrop;
 
         addTile = new ShortcutTile(null, true, delegate { addMenu.Show(Cursor.Position); });
         addTile.Location = new Point(704, 404);
@@ -195,6 +204,7 @@ internal sealed class LauncherForm : Form
 
         addMenu.Items.Add("添加文件或程序", null, delegate { AddFileShortcut(); });
         addMenu.Items.Add("添加文件夹", null, delegate { AddFolderShortcut(); });
+        addMenu.Items.Add("添加网页网址", null, delegate { AddUrlShortcut(); });
         settingsMenu.Items.Add("恢复默认快捷入口", null, delegate { RestoreDefaultShortcuts(); });
         settingsMenu.Items.Add("打开配置目录", null, delegate { OpenConfigurationDirectory(); });
         settingsMenu.Items.Add(new ToolStripSeparator());
@@ -240,6 +250,16 @@ internal sealed class LauncherForm : Form
         }
     }
 
+    protected override bool ProcessCmdKey(ref Message message, Keys keyData)
+    {
+        if (keyData == Keys.Tab && search.Focused)
+        {
+            SetWebSearchMode(true);
+            return true;
+        }
+        return base.ProcessCmdKey(ref message, keyData);
+    }
+
     private void OnShown(object sender, EventArgs e)
     {
         ShowLauncher();
@@ -255,14 +275,14 @@ internal sealed class LauncherForm : Form
                 }
                 engineReady = task.Result == null;
                 status.Text = engineReady ? "输入关键词搜索本地文件" : task.Result;
-                if (engineReady && search.TextLength > 0) { searchTimer.Stop(); searchTimer.Start(); }
+                if (engineReady && !webSearchMode && search.TextLength > 0) { searchTimer.Stop(); searchTimer.Start(); }
             });
         });
     }
 
     internal void ShowLauncher()
     {
-        search.Clear();
+        SetWebSearchMode(false);
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + Math.Max(24, area.Height / 8));
         if (!Visible) Show();
@@ -277,11 +297,46 @@ internal sealed class LauncherForm : Form
         else ShowLauncher();
     }
 
+    private void SetWebSearchMode(bool enabled)
+    {
+        webSearchMode = enabled;
+        search.Clear();
+        Native.SendMessageText(search.Handle, 0x1501, new IntPtr(1),
+            enabled ? "网页搜索（bili 关键词）" : "搜索本地文件或应用");
+        shortcuts.Visible = true;
+        addTile.Visible = true;
+        results.Visible = false;
+        ClearResults();
+        status.Text = enabled ? "输入关键词后按 Enter，用 Chrome 搜索" :
+            (engineReady ? "输入关键词搜索本地文件" : "正在启动本地搜索…");
+    }
+
+    internal static string WebSearchUrl(string query)
+    {
+        query = query.Trim();
+        if (query.StartsWith("bili", StringComparison.OrdinalIgnoreCase))
+        {
+            var keyword = query.Substring(4).Trim();
+            return keyword.Length == 0 ? "https://www.bilibili.com/" :
+                "https://search.bilibili.com/all?keyword=" + Uri.EscapeDataString(keyword);
+        }
+        return query.Length == 0 ? null : "https://www.google.com/search?q=" + Uri.EscapeDataString(query);
+    }
+
     private void SearchTextChanged(object sender, EventArgs e)
     {
         searchTimer.Stop();
         generation++;
         client.Cancel();
+        if (webSearchMode)
+        {
+            shortcuts.Visible = true;
+            addTile.Visible = true;
+            results.Visible = false;
+            ClearResults();
+            status.Text = "网页搜索：Enter 使用 Chrome；bili 关键词可搜索哔哩哔哩";
+            return;
+        }
         var searching = search.TextLength > 0;
         shortcuts.Visible = !searching;
         addTile.Visible = !searching;
@@ -494,6 +549,11 @@ internal sealed class LauncherForm : Form
         {
             var current = item;
             var tile = new ShortcutTile(current, false, delegate { OpenShortcut(current); });
+            tile.Tag = current;
+            tile.AllowDrop = true;
+            tile.DragEnter += ShortcutDragOver;
+            tile.DragOver += ShortcutDragOver;
+            tile.DragDrop += ShortcutDragDrop;
             var menu = new ContextMenuStrip();
             menu.Items.Add("打开", null, delegate { OpenShortcut(current); });
             menu.Items.Add("删除快捷入口", null, delegate { RemoveShortcut(current); });
@@ -501,6 +561,30 @@ internal sealed class LauncherForm : Form
             shortcuts.Controls.Add(tile);
         }
         shortcuts.ResumeLayout();
+    }
+
+    private void ShortcutDragOver(object sender, DragEventArgs e)
+    {
+        e.Effect = e.Data.GetDataPresent(typeof(ShortcutItem)) ? DragDropEffects.Move : DragDropEffects.None;
+    }
+
+    private void ShortcutDragDrop(object sender, DragEventArgs e)
+    {
+        var item = e.Data.GetData(typeof(ShortcutItem)) as ShortcutItem;
+        if (item == null) return;
+        var from = shortcutItems.IndexOf(item);
+        if (from < 0) return;
+        var point = shortcuts.PointToClient(new Point(e.X, e.Y));
+        var targetControl = shortcuts.GetChildAtPoint(point);
+        var target = targetControl == null ? shortcutItems.Count : shortcutItems.IndexOf(targetControl.Tag as ShortcutItem);
+        if (target < 0) target = shortcutItems.Count;
+        if (targetControl != null && point.X > targetControl.Right - targetControl.Width / 2) target++;
+        shortcutItems.RemoveAt(from);
+        if (from < target) target--;
+        shortcutItems.Insert(Math.Max(0, Math.Min(target, shortcutItems.Count)), item);
+        ShortcutStore.Save(shortcutItems);
+        RebuildShortcuts();
+        status.Text = "已调整快捷入口位置";
     }
 
     private void AddFileShortcut()
@@ -523,6 +607,14 @@ internal sealed class LauncherForm : Form
             var name = new DirectoryInfo(dialog.SelectedPath).Name;
             if (name.Length == 0) name = dialog.SelectedPath;
             AddShortcut(new ShortcutItem(name, dialog.SelectedPath));
+        }
+    }
+
+    private void AddUrlShortcut()
+    {
+        using (var dialog = new UrlShortcutDialog())
+        {
+            if (dialog.ShowDialog(this) == DialogResult.OK) AddShortcut(dialog.Shortcut);
         }
     }
 
@@ -578,7 +670,7 @@ internal sealed class LauncherForm : Form
 
     private void SearchKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Down && results.Items.Count > 0)
+        if (!webSearchMode && e.KeyCode == Keys.Down && results.Items.Count > 0)
         {
             results.Focus();
             results.Items[0].Selected = true;
@@ -586,15 +678,33 @@ internal sealed class LauncherForm : Form
         }
         else if (e.KeyCode == Keys.Enter)
         {
-            OpenSelected();
+            if (webSearchMode) OpenWebSearch();
+            else OpenSelected();
             e.Handled = true;
             e.SuppressKeyPress = true;
         }
-        else if (e.KeyCode == Keys.Escape && search.TextLength > 0)
+        else if (e.KeyCode == Keys.Escape && (webSearchMode || search.TextLength > 0))
         {
-            search.Clear();
+            if (webSearchMode) SetWebSearchMode(false);
+            else search.Clear();
             e.Handled = true;
         }
+    }
+
+    private void OpenWebSearch()
+    {
+        var url = WebSearchUrl(search.Text);
+        if (url == null) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(Ui.ChromeExecutable())
+            {
+                Arguments = SearchClient.QuoteArgument(url),
+                UseShellExecute = true
+            });
+            Hide();
+        }
+        catch (Exception ex) { status.Text = "无法打开 Chrome：" + ex.Message; }
     }
 
     private void ResultsKeyDown(object sender, KeyEventArgs e)
@@ -706,6 +816,57 @@ internal sealed class ShortcutItem
     }
 }
 
+internal sealed class UrlShortcutDialog : Form
+{
+    private readonly TextBox name = new TextBox();
+    private readonly TextBox address = new TextBox();
+    internal ShortcutItem Shortcut { get; private set; }
+
+    internal UrlShortcutDialog()
+    {
+        Text = "添加网页网址";
+        ClientSize = new Size(420, 145);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        Font = new Font("Microsoft YaHei UI", 9F);
+
+        Controls.Add(new Label { Text = "名称", Location = new Point(18, 20), AutoSize = true });
+        name.Location = new Point(72, 16);
+        name.Size = new Size(328, 25);
+        name.Text = "ChatGPT";
+        Controls.Add(name);
+        Controls.Add(new Label { Text = "网址", Location = new Point(18, 59), AutoSize = true });
+        address.Location = new Point(72, 55);
+        address.Size = new Size(328, 25);
+        address.Text = "https://chatgpt.com";
+        Controls.Add(address);
+
+        var okay = new Button { Text = "添加", Location = new Point(244, 101), Size = new Size(74, 28) };
+        var cancel = new Button { Text = "取消", Location = new Point(326, 101), Size = new Size(74, 28), DialogResult = DialogResult.Cancel };
+        okay.Click += delegate
+        {
+            var url = address.Text.Trim();
+            if (!url.Contains("://")) url = "https://" + url;
+            Uri parsed;
+            if (name.Text.Trim().Length == 0 || !Uri.TryCreate(url, UriKind.Absolute, out parsed) ||
+                (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+            {
+                MessageBox.Show(this, "请输入名称和有效的 http/https 网址。", "Matches", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            Shortcut = new ShortcutItem(name.Text.Trim(), parsed.AbsoluteUri);
+            DialogResult = DialogResult.OK;
+        };
+        Controls.Add(okay);
+        Controls.Add(cancel);
+        AcceptButton = okay;
+        CancelButton = cancel;
+    }
+}
+
 internal static class ShortcutStore
 {
     private static readonly string FilePath = Path.Combine(
@@ -726,6 +887,13 @@ internal static class ShortcutStore
             ShortcutItem item;
             if (TryParse(line, out item)) items.Add(item);
         }
+        if (items.Count == 8 && items[0].Name == "桌面" && items[1].Name == "下载" &&
+            items[2].Name == "文档" && items[3].Name == "图片" && items[4].Name == "计算器" &&
+            items[5].Name == "记事本" && items[6].Name == "画图" && items[7].Name == "控制面板")
+        {
+            items = Defaults();
+            Save(items);
+        }
         return items;
     }
 
@@ -739,18 +907,11 @@ internal static class ShortcutStore
 
     internal static List<ShortcutItem> Defaults()
     {
-        var system = Environment.SystemDirectory;
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return new List<ShortcutItem>
         {
             new ShortcutItem("桌面", Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)),
-            new ShortcutItem("下载", Path.Combine(profile, "Downloads")),
-            new ShortcutItem("文档", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
-            new ShortcutItem("图片", Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)),
-            new ShortcutItem("计算器", Path.Combine(system, "calc.exe")),
-            new ShortcutItem("记事本", Path.Combine(system, "notepad.exe")),
-            new ShortcutItem("画图", Path.Combine(system, "mspaint.exe")),
-            new ShortcutItem("控制面板", Path.Combine(system, "control.exe"))
+            new ShortcutItem("下载", Path.Combine(profile, "Downloads"))
         };
     }
 
@@ -784,6 +945,9 @@ internal sealed class ShortcutTile : Control
     private readonly Action action;
     private readonly Image icon;
     private bool hover;
+    private bool pressed;
+    private bool dragged;
+    private int pressedAt;
 
     internal ShortcutTile(ShortcutItem shortcut, bool isAdd, Action clicked)
     {
@@ -801,10 +965,32 @@ internal sealed class ShortcutTile : Control
     protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
     protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
 
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (!add && e.Button == MouseButtons.Left)
+        {
+            pressed = true;
+            dragged = false;
+            pressedAt = Environment.TickCount;
+        }
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (pressed && !dragged && e.Button == MouseButtons.Left && Environment.TickCount - pressedAt >= 400)
+        {
+            dragged = true;
+            DoDragDrop(item, DragDropEffects.Move);
+        }
+    }
+
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
-        if (e.Button == MouseButtons.Left && action != null) action();
+        pressed = false;
+        if (e.Button == MouseButtons.Left && !dragged && action != null) action();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -851,6 +1037,18 @@ internal sealed class ShortcutTile : Control
 
 internal static class Ui
 {
+    internal static string ChromeExecutable()
+    {
+        var paths = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Google", "Chrome", "Application", "chrome.exe")
+        };
+        foreach (var path in paths) if (File.Exists(path)) return path;
+        return "chrome.exe";
+    }
+
     internal static GraphicsPath RoundRectangle(Rectangle bounds, int radius)
     {
         var diameter = radius * 2;
@@ -878,6 +1076,9 @@ internal static class Ui
     {
         try
         {
+            Uri uri;
+            if (Uri.TryCreate(target, UriKind.Absolute, out uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)) target = ChromeExecutable();
             var identifier = typeof(Native.IShellItemImageFactory).GUID;
             Native.IShellItemImageFactory factory;
             if (Native.SHCreateItemFromParsingName(target, IntPtr.Zero, ref identifier, out factory) == 0)
