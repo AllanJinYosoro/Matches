@@ -76,6 +76,9 @@ internal static class Program
             if (Ui.WebsiteIconPath("https://chatgpt.com/a") != Ui.WebsiteIconPath("https://chatgpt.com/b") ||
                 Ui.WebsiteIconPath("C:\\temp") != null) return 1;
             if (!LauncherForm.CodexTerminalArguments("C:\\a b", "codex.exe").Contains("\"C:\\a b\"")) return 1;
+            HotkeySettings testedHotkeys;
+            if (!HotkeyStore.TryParse(new[] { "F4", "F5", "F6" }, out testedHotkeys) || testedHotkeys.Copy != Keys.F5 ||
+                HotkeyStore.TryParse(new[] { "F4", "F4", "F6" }, out testedHotkeys)) return 1;
             return 0;
         }
         catch { return 1; }
@@ -103,6 +106,7 @@ internal sealed class LauncherForm : Form
     private readonly Engine engine;
     private readonly KeyboardHook keyboardHook;
     private List<ShortcutItem> shortcutItems;
+    private HotkeySettings hotkeys;
     private int generation;
     private int hoveredResultIndex = -1;
     private int hoveredResultAction;
@@ -119,6 +123,7 @@ internal sealed class LauncherForm : Form
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Matches", "engine", "es.exe"));
         engine = new Engine(AppDomain.CurrentDomain.BaseDirectory);
+        hotkeys = HotkeyStore.Load();
 
         Text = "Matches";
         ClientSize = new Size(808, 540);
@@ -199,7 +204,7 @@ internal sealed class LauncherForm : Form
         shortcutHint.Size = new Size(730, 22);
         shortcutHint.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         shortcutHint.ForeColor = Color.FromArgb(115, 115, 115);
-        shortcutHint.Text = "F1  打开所在文件夹    F2  复制路径    F3  在当前目录打开 Codex Terminal";
+        UpdateShortcutHint();
 
         status.Location = new Point(16, 510);
         status.Size = new Size(700, 22);
@@ -232,6 +237,8 @@ internal sealed class LauncherForm : Form
         addMenu.Items.Add("添加文件或程序", null, delegate { AddFileShortcut(); });
         addMenu.Items.Add("添加文件夹", null, delegate { AddFolderShortcut(); });
         addMenu.Items.Add("添加网页网址", null, delegate { AddUrlShortcut(); });
+        settingsMenu.Items.Add("快捷键设置...", null, delegate { EditHotkeys(); });
+        settingsMenu.Items.Add(new ToolStripSeparator());
         settingsMenu.Items.Add("恢复默认快捷入口", null, delegate { RestoreDefaultShortcuts(); });
         settingsMenu.Items.Add("打开配置目录", null, delegate { OpenConfigurationDirectory(); });
         settingsMenu.Items.Add(new ToolStripSeparator());
@@ -282,9 +289,9 @@ internal sealed class LauncherForm : Form
 
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
-        if (keyData == Keys.F1) { RunFileAction(1); return true; }
-        if (keyData == Keys.F2) { RunFileAction(2); return true; }
-        if (keyData == Keys.F3) { RunFileAction(3); return true; }
+        if (keyData == hotkeys.Locate) { RunFileAction(1); return true; }
+        if (keyData == hotkeys.Copy) { RunFileAction(2); return true; }
+        if (keyData == hotkeys.Codex) { RunFileAction(3); return true; }
         if (keyData == Keys.Tab && search.Focused)
         {
             SetWebSearchMode(!webSearchMode);
@@ -772,6 +779,24 @@ internal sealed class LauncherForm : Form
         status.Text = "已恢复默认快捷入口";
     }
 
+    private void EditHotkeys()
+    {
+        using (var dialog = new HotkeySettingsDialog(hotkeys))
+        {
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            hotkeys = dialog.Settings;
+            HotkeyStore.Save(hotkeys);
+            UpdateShortcutHint();
+            status.Text = "快捷键设置已保存";
+        }
+    }
+
+    private void UpdateShortcutHint()
+    {
+        shortcutHint.Text = hotkeys.Locate + "  打开所在文件夹    " + hotkeys.Copy +
+            "  复制路径    " + hotkeys.Codex + "  在当前目录打开 Codex Terminal";
+    }
+
     private void OpenShortcut(ShortcutItem item)
     {
         try
@@ -1029,6 +1054,106 @@ internal sealed class UrlShortcutDialog : Form
         Controls.Add(cancel);
         AcceptButton = okay;
         CancelButton = cancel;
+    }
+}
+
+internal sealed class HotkeySettings
+{
+    internal readonly Keys Locate;
+    internal readonly Keys Copy;
+    internal readonly Keys Codex;
+
+    internal HotkeySettings(Keys locate, Keys copy, Keys codex)
+    {
+        Locate = locate;
+        Copy = copy;
+        Codex = codex;
+    }
+}
+
+internal sealed class HotkeySettingsDialog : Form
+{
+    private readonly ComboBox locate = new ComboBox();
+    private readonly ComboBox copy = new ComboBox();
+    private readonly ComboBox codex = new ComboBox();
+    internal HotkeySettings Settings { get; private set; }
+
+    internal HotkeySettingsDialog(HotkeySettings current)
+    {
+        Text = "快捷键设置";
+        ClientSize = new Size(390, 188);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        Font = new Font("Microsoft YaHei UI", 9F);
+
+        AddRow("打开所在文件夹", locate, 18, current.Locate);
+        AddRow("复制路径", copy, 58, current.Copy);
+        AddRow("打开 Codex Terminal", codex, 98, current.Codex);
+        var okay = new Button { Text = "保存", Location = new Point(214, 143), Size = new Size(74, 28) };
+        var cancel = new Button { Text = "取消", Location = new Point(296, 143), Size = new Size(74, 28), DialogResult = DialogResult.Cancel };
+        okay.Click += delegate
+        {
+            var value = new HotkeySettings((Keys)locate.SelectedItem, (Keys)copy.SelectedItem, (Keys)codex.SelectedItem);
+            if (value.Locate == value.Copy || value.Locate == value.Codex || value.Copy == value.Codex)
+            {
+                MessageBox.Show(this, "三个快捷键不能重复。", "Matches", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            Settings = value;
+            DialogResult = DialogResult.OK;
+        };
+        Controls.Add(okay);
+        Controls.Add(cancel);
+        AcceptButton = okay;
+        CancelButton = cancel;
+    }
+
+    private void AddRow(string text, ComboBox box, int top, Keys selected)
+    {
+        Controls.Add(new Label { Text = text, Location = new Point(18, top + 5), Size = new Size(190, 22) });
+        box.Location = new Point(220, top);
+        box.Size = new Size(150, 25);
+        box.DropDownStyle = ComboBoxStyle.DropDownList;
+        for (var key = Keys.F1; key <= Keys.F12; key++) box.Items.Add(key);
+        box.SelectedItem = selected;
+        Controls.Add(box);
+    }
+}
+
+internal static class HotkeyStore
+{
+    private static readonly string FilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Matches", "hotkeys.txt");
+
+    internal static HotkeySettings Load()
+    {
+        try
+        {
+            HotkeySettings settings;
+            if (File.Exists(FilePath) && TryParse(File.ReadAllLines(FilePath, Encoding.UTF8), out settings)) return settings;
+        }
+        catch { }
+        return new HotkeySettings(Keys.F1, Keys.F2, Keys.F3);
+    }
+
+    internal static void Save(HotkeySettings settings)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+        File.WriteAllLines(FilePath, new[] { settings.Locate.ToString(), settings.Copy.ToString(), settings.Codex.ToString() }, new UTF8Encoding(false));
+    }
+
+    internal static bool TryParse(string[] lines, out HotkeySettings settings)
+    {
+        settings = null;
+        Keys locate, copy, codex;
+        if (lines.Length != 3 || !Enum.TryParse(lines[0], out locate) || !Enum.TryParse(lines[1], out copy) ||
+            !Enum.TryParse(lines[2], out codex) || locate < Keys.F1 || locate > Keys.F12 || copy < Keys.F1 ||
+            copy > Keys.F12 || codex < Keys.F1 || codex > Keys.F12 || locate == copy || locate == codex || copy == codex) return false;
+        settings = new HotkeySettings(locate, copy, codex);
+        return true;
     }
 }
 
