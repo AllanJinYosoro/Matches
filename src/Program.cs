@@ -76,6 +76,13 @@ internal static class Program
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
             }, 100);
             if (explicitProgramData[0] != Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)) return 1;
+            var rankedFile = Path.GetTempFileName();
+            try
+            {
+                var fileFirst = SearchClient.RankResults(String.Empty, new List<string> { Path.GetTempPath(), rankedFile }, 2);
+                if (fileFirst[0] != rankedFile) return 1;
+            }
+            finally { File.Delete(rankedFile); }
             if (!LauncherForm.IsUninstallQuery(" 卸载 ") || !LauncherForm.IsUninstallQuery("XIEZAI") ||
                 LauncherForm.IsUninstallQuery("卸载程序")) return 1;
             if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("GUANJI") != "shutdown" ||

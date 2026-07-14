@@ -97,6 +97,7 @@ internal sealed class SearchClient
         var score = String.Equals(comparableName, query, StringComparison.OrdinalIgnoreCase) ? 120 :
             comparableName.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 40 : 0;
         if (launchable) score += 50;
+        if (File.Exists(clean)) score += 50;
 
         var commonStart = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
         var userStart = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
