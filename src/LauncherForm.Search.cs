@@ -97,14 +97,16 @@ internal sealed partial class LauncherForm
 
     internal static bool IsUninstallQuery(string query)
     {
-        return String.Equals(query.Trim(), "卸载", StringComparison.OrdinalIgnoreCase);
+        query = query.Trim();
+        return String.Equals(query, "卸载", StringComparison.OrdinalIgnoreCase) ||
+            String.Equals(query, "xiezai", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static string PowerActionFor(string query)
     {
         query = query.Trim();
-        if (query == "关机") return "shutdown";
-        if (query == "重启") return "restart";
+        if (query == "关机" || String.Equals(query, "guanji", StringComparison.OrdinalIgnoreCase)) return "shutdown";
+        if (query == "重启" || String.Equals(query, "chongqi", StringComparison.OrdinalIgnoreCase)) return "restart";
         return null;
     }
 

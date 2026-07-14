@@ -76,8 +76,10 @@ internal static class Program
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
             }, 100);
             if (explicitProgramData[0] != Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)) return 1;
-            if (!LauncherForm.IsUninstallQuery(" 卸载 ") || LauncherForm.IsUninstallQuery("卸载程序")) return 1;
-            if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("重启") != "restart" ||
+            if (!LauncherForm.IsUninstallQuery(" 卸载 ") || !LauncherForm.IsUninstallQuery("XIEZAI") ||
+                LauncherForm.IsUninstallQuery("卸载程序")) return 1;
+            if (LauncherForm.PowerActionFor(" 关机 ") != "shutdown" || LauncherForm.PowerActionFor("GUANJI") != "shutdown" ||
+                LauncherForm.PowerActionFor("重启") != "restart" || LauncherForm.PowerActionFor("ChOnGqI") != "restart" ||
                 LauncherForm.PowerActionFor("重新启动") != null || LauncherForm.PowerArguments("restart") != "/r /t 0") return 1;
             using (var shutdown = Ui.PowerImage("shutdown", 32))
             using (var restart = Ui.PowerImage("restart", 32))
