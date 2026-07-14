@@ -130,7 +130,7 @@ internal sealed partial class LauncherForm
         {
             var path = Path.Combine(Environment.SystemDirectory, "appwiz.cpl");
             var item = new ListViewItem("卸载或更改程序");
-            item.Tag = new SearchResult(path, item.Text, "控制面板 > 程序 > 程序和功能");
+            item.Tag = new SearchResult(path, item.Text, "控制面板 > 程序 > 程序和功能") { Image = Ui.UninstallImage(32) };
             results.Items.Add(item);
         }
         foreach (var path in paths)

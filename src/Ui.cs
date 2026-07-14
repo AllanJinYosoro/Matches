@@ -157,6 +157,31 @@ internal static class Ui
         return image;
     }
 
+    internal static Image UninstallImage(int size)
+    {
+        const int canvas = 128;
+        var source = new Bitmap(canvas, canvas);
+        using (var graphics = Graphics.FromImage(source))
+        using (var pen = new Pen(Color.FromArgb(232, 78, 68), 10F))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            pen.StartCap = pen.EndCap = LineCap.Round;
+            graphics.DrawLine(pen, 35, 37, 93, 37);
+            graphics.DrawLine(pen, 52, 24, 76, 24);
+            graphics.DrawLines(pen, new[] { new Point(43, 48), new Point(49, 103), new Point(79, 103), new Point(85, 48) });
+            graphics.DrawLine(pen, 57, 51, 59, 91);
+            graphics.DrawLine(pen, 71, 51, 69, 91);
+        }
+        var image = new Bitmap(size, size);
+        using (var graphics = Graphics.FromImage(image))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(source, new Rectangle(0, 0, size, size));
+        }
+        source.Dispose();
+        return image;
+    }
+
     internal static Image GetImage(string target, int size)
     {
         try

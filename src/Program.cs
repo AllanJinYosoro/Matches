@@ -83,6 +83,8 @@ internal static class Program
             using (var restart = Ui.PowerImage("restart", 32))
                 if (shutdown.Size != new Size(32, 32) || restart.Size != new Size(32, 32) ||
                     ((Bitmap)shutdown).GetPixel(16, 4).ToArgb() == ((Bitmap)restart).GetPixel(16, 4).ToArgb()) return 1;
+            using (var uninstall = Ui.UninstallImage(32))
+                if (uninstall.Size != new Size(32, 32) || ((Bitmap)uninstall).GetPixel(16, 9).A == 0) return 1;
             if (!File.Exists(Path.Combine(Environment.SystemDirectory, "appwiz.cpl"))) return 1;
             var row = new Rectangle(0, 0, 770, 48);
             if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
