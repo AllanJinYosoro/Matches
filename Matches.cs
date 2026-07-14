@@ -57,6 +57,12 @@ internal static class Program
             if (paths.Count != 2 || paths[0] != "C:\\测试 文件.txt" || paths[1] != "D:\\目录") return 1;
             var arguments = SearchClient.BuildArguments("Matches", "C:\\temp\\result.txt");
             if (arguments.Contains("name:") || !arguments.Contains("\"Matches\"")) return 1;
+            if (!LauncherForm.IsUninstallQuery(" 卸载 ") || LauncherForm.IsUninstallQuery("卸载程序")) return 1;
+            if (!File.Exists(Path.Combine(Environment.SystemDirectory, "appwiz.cpl"))) return 1;
+            var row = new Rectangle(0, 0, 770, 48);
+            if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
+                LauncherForm.ResultActionAt(new Point(740, 24), row) != 2 ||
+                LauncherForm.ResultActionAt(new Point(100, 24), row) != 0) return 1;
             var saved = ShortcutStore.Serialize(new ShortcutItem("测试", "C:\\目录\\程序.exe"));
             ShortcutItem restored;
             if (!ShortcutStore.TryParse(saved, out restored) || restored.Name != "测试" || restored.Target != "C:\\目录\\程序.exe") return 1;
@@ -86,6 +92,8 @@ internal sealed class LauncherForm : Form
     private readonly KeyboardHook keyboardHook;
     private List<ShortcutItem> shortcutItems;
     private int generation;
+    private int hoveredResultIndex = -1;
+    private int hoveredResultAction;
     private bool engineReady;
     private bool exiting;
 
@@ -152,6 +160,10 @@ internal sealed class LauncherForm : Form
         results.DrawItem += DrawResultItem;
         results.DrawSubItem += DrawResultSubItem;
         results.SelectedIndexChanged += delegate { results.Invalidate(); };
+        results.MouseMove += ResultMouseMove;
+        results.MouseLeave += ResultMouseLeave;
+        results.MouseDown += ResultMouseDown;
+        results.MouseDoubleClick += ResultMouseDoubleClick;
         results.Visible = false;
 
         status.Location = new Point(16, 510);
@@ -188,12 +200,6 @@ internal sealed class LauncherForm : Form
         settingsMenu.Items.Add(new ToolStripSeparator());
         settingsMenu.Items.Add("退出 Matches", null, delegate { ExitApplication(); });
 
-        var resultMenu = new ContextMenuStrip();
-        resultMenu.Items.Add("打开", null, delegate { OpenSelected(); });
-        resultMenu.Items.Add("在资源管理器中定位", null, delegate { LocateSelected(); });
-        resultMenu.Items.Add("复制完整路径", null, delegate { CopySelected(); });
-        results.ContextMenuStrip = resultMenu;
-
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("显示 Matches", null, delegate { ShowLauncher(); });
         trayMenu.Items.Add("退出", null, delegate { ExitApplication(); });
@@ -208,7 +214,6 @@ internal sealed class LauncherForm : Form
         search.TextChanged += SearchTextChanged;
         search.KeyDown += SearchKeyDown;
         results.KeyDown += ResultsKeyDown;
-        results.DoubleClick += delegate { OpenSelected(); };
         Resize += delegate
         {
             Ui.ApplyRoundedRegion(this, 12);
@@ -310,15 +315,27 @@ internal sealed class LauncherForm : Form
                     status.Text = "搜索失败：" + task.Exception.GetBaseException().Message;
                     return;
                 }
-                ShowResults(task.Result);
+                ShowResults(task.Result, query);
             });
         });
     }
 
-    private void ShowResults(List<string> paths)
+    internal static bool IsUninstallQuery(string query)
+    {
+        return String.Equals(query.Trim(), "卸载", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ShowResults(List<string> paths, string query)
     {
         results.BeginUpdate();
         ClearResults();
+        if (IsUninstallQuery(query))
+        {
+            var path = Path.Combine(Environment.SystemDirectory, "appwiz.cpl");
+            var item = new ListViewItem("卸载或更改程序");
+            item.Tag = new SearchResult(path, item.Text, "控制面板 > 程序 > 程序和功能");
+            results.Items.Add(item);
+        }
         foreach (var path in paths)
         {
             var clean = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -330,7 +347,7 @@ internal sealed class LauncherForm : Form
         }
         results.EndUpdate();
         if (results.Items.Count > 0) results.Items[0].Selected = true;
-        status.Text = paths.Count == 0 ? "没有找到匹配项" : "找到 " + paths.Count + " 项（最多显示 100 项）";
+        status.Text = results.Items.Count == 0 ? "没有找到匹配项" : "找到 " + results.Items.Count + " 项（最多显示 100 项）";
     }
 
     private void ClearResults()
@@ -341,6 +358,8 @@ internal sealed class LauncherForm : Form
             if (result != null) result.Dispose();
         }
         results.Items.Clear();
+        hoveredResultIndex = -1;
+        hoveredResultAction = 0;
     }
 
     private void DrawResultItem(object sender, DrawListViewItemEventArgs e)
@@ -358,13 +377,99 @@ internal sealed class LauncherForm : Form
         var bounds = e.Bounds;
         e.Graphics.DrawImage(result.Image, new Rectangle(bounds.Left + 12, bounds.Top + 8, 32, 32));
         TextRenderer.DrawText(e.Graphics, result.Name, Font,
-            new Rectangle(bounds.Left + 54, bounds.Top + 4, bounds.Width - 68, 21),
+            new Rectangle(bounds.Left + 54, bounds.Top + 4, bounds.Width - 145, 21),
             selected ? Color.White : Color.FromArgb(32, 32, 32),
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         TextRenderer.DrawText(e.Graphics, result.Directory, resultPathFont,
-            new Rectangle(bounds.Left + 54, bounds.Top + 25, bounds.Width - 68, 18),
+            new Rectangle(bounds.Left + 54, bounds.Top + 25, bounds.Width - 145, 18),
             selected ? Color.FromArgb(235, 218, 242) : Color.FromArgb(140, 140, 140),
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        if (e.Item.Index == hoveredResultIndex) DrawResultActions(e.Graphics, bounds, selected);
+    }
+
+    private static Rectangle ResultButton(Rectangle row, int action)
+    {
+        return new Rectangle(row.Right - (action == 1 ? 70 : 36), row.Top + 9, 28, 28);
+    }
+
+    internal static int ResultActionAt(Point point, Rectangle row)
+    {
+        if (ResultButton(row, 1).Contains(point)) return 1;
+        if (ResultButton(row, 2).Contains(point)) return 2;
+        return 0;
+    }
+
+    private void DrawResultActions(Graphics graphics, Rectangle row, bool selected)
+    {
+        var oldSmoothing = graphics.SmoothingMode;
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var color = selected ? Color.White : Color.FromArgb(88, 88, 88);
+        for (var action = 1; action <= 2; action++)
+        {
+            var button = ResultButton(row, action);
+            if (hoveredResultAction == action)
+            {
+                using (var brush = new SolidBrush(selected ? Color.FromArgb(130, 255, 255, 255) : Color.FromArgb(232, 226, 235)))
+                using (var path = Ui.RoundRectangle(button, 5))
+                    graphics.FillPath(brush, path);
+            }
+            using (var pen = new Pen(color, 1.6F))
+            {
+                if (action == 1)
+                {
+                    graphics.DrawLines(pen, new[] { new Point(button.Left + 6, button.Top + 11), new Point(button.Left + 6, button.Top + 8), new Point(button.Left + 12, button.Top + 8), new Point(button.Left + 14, button.Top + 11), new Point(button.Right - 6, button.Top + 11), new Point(button.Right - 6, button.Bottom - 7), new Point(button.Left + 6, button.Bottom - 7), new Point(button.Left + 6, button.Top + 11) });
+                    graphics.DrawLine(pen, button.Left + 9, button.Bottom - 10, button.Right - 9, button.Top + 14);
+                }
+                else
+                {
+                    graphics.DrawRectangle(pen, button.Left + 10, button.Top + 7, 11, 13);
+                    graphics.DrawRectangle(pen, button.Left + 7, button.Top + 10, 11, 13);
+                }
+            }
+        }
+        graphics.SmoothingMode = oldSmoothing;
+    }
+
+    private void ResultMouseMove(object sender, MouseEventArgs e)
+    {
+        var item = results.GetItemAt(e.X, e.Y);
+        var index = item == null ? -1 : item.Index;
+        var action = item == null ? 0 : ResultActionAt(e.Location, item.Bounds);
+        if (index != hoveredResultIndex || action != hoveredResultAction)
+        {
+            hoveredResultIndex = index;
+            hoveredResultAction = action;
+            results.Cursor = action == 0 ? Cursors.Default : Cursors.Hand;
+            results.Invalidate();
+        }
+    }
+
+    private void ResultMouseLeave(object sender, EventArgs e)
+    {
+        hoveredResultIndex = -1;
+        hoveredResultAction = 0;
+        results.Cursor = Cursors.Default;
+        results.Invalidate();
+    }
+
+    private void ResultMouseDown(object sender, MouseEventArgs e)
+    {
+        var item = results.GetItemAt(e.X, e.Y);
+        if (item == null) return;
+        var action = ResultActionAt(e.Location, item.Bounds);
+        if (action == 0) return;
+        item.Selected = true;
+        var path = ((SearchResult)item.Tag).Path;
+        if (action == 1) LocatePath(path);
+        else CopyPath(path);
+    }
+
+    private void ResultMouseDoubleClick(object sender, MouseEventArgs e)
+    {
+        var item = results.GetItemAt(e.X, e.Y);
+        if (item == null || ResultActionAt(e.Location, item.Bounds) != 0) return;
+        item.Selected = true;
+        OpenSelected();
     }
 
     private void RebuildShortcuts()
@@ -504,10 +609,8 @@ internal sealed class LauncherForm : Form
         catch (Exception ex) { status.Text = "无法打开：" + ex.Message; }
     }
 
-    private void LocateSelected()
+    private void LocatePath(string path)
     {
-        var path = SelectedPath();
-        if (path == null) return;
         try
         {
             if (Path.GetPathRoot(path) == path) Process.Start("explorer.exe", SearchClient.QuoteArgument(path));
@@ -516,10 +619,8 @@ internal sealed class LauncherForm : Form
         catch (Exception ex) { status.Text = "无法定位：" + ex.Message; }
     }
 
-    private void CopySelected()
+    private void CopyPath(string path)
     {
-        var path = SelectedPath();
-        if (path == null) return;
         try { Clipboard.SetText(path); status.Text = "已复制完整路径"; }
         catch (Exception ex) { status.Text = "无法复制：" + ex.Message; }
     }
