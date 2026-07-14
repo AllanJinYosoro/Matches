@@ -81,6 +81,7 @@ internal sealed class LauncherForm : Form
 {
     private readonly Panel searchHost = new Panel();
     private readonly TextBox search = new TextBox();
+    private readonly Label searchCue = new Label();
     private readonly FlowLayoutPanel shortcuts = new FlowLayoutPanel();
     private readonly ShortcutTile addTile;
     private readonly ListView results = new BufferedListView();
@@ -134,8 +135,17 @@ internal sealed class LauncherForm : Form
         search.Location = new Point(18, 16);
         search.Size = new Size(752, 32);
         search.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-        search.HandleCreated += delegate { Native.SendMessageText(search.Handle, 0x1501, new IntPtr(1), "搜索本地文件或应用"); };
         searchHost.Controls.Add(search);
+        searchCue.AutoSize = true;
+        searchCue.BackColor = searchHost.BackColor;
+        searchCue.Font = search.Font;
+        searchCue.Location = new Point(18, 14);
+        searchCue.Text = "搜索本地文件或应用";
+        searchCue.ForeColor = Color.FromArgb(120, 120, 120);
+        searchCue.Cursor = Cursors.IBeam;
+        searchCue.Click += delegate { search.Focus(); };
+        searchHost.Controls.Add(searchCue);
+        searchCue.BringToFront();
 
         shortcuts.Location = new Point(10, 84);
         shortcuts.Size = new Size(788, 420);
@@ -308,8 +318,7 @@ internal sealed class LauncherForm : Form
         currentFolder = null;
         search.ForeColor = enabled ? Color.FromArgb(0, 102, 204) : SystemColors.WindowText;
         search.Clear();
-        Native.SendMessageText(search.Handle, 0x1501, new IntPtr(1),
-            enabled ? "网页搜索" : "搜索本地文件或应用");
+        UpdateSearchCue();
         shortcuts.Visible = true;
         addTile.Visible = true;
         results.Visible = false;
@@ -335,6 +344,7 @@ internal sealed class LauncherForm : Form
         searchTimer.Stop();
         generation++;
         client.Cancel();
+        UpdateSearchCue();
         if (webSearchMode)
         {
             shortcuts.Visible = true;
@@ -362,6 +372,13 @@ internal sealed class LauncherForm : Form
             status.Text = engineReady ? "输入关键词搜索本地文件" : "正在启动本地搜索…";
         }
         else searchTimer.Start();
+    }
+
+    private void UpdateSearchCue()
+    {
+        searchCue.Text = webSearchMode ? "网页搜索" : "搜索本地文件或应用";
+        searchCue.ForeColor = webSearchMode ? Color.FromArgb(0, 102, 204) : Color.FromArgb(120, 120, 120);
+        searchCue.Visible = search.TextLength == 0;
     }
 
     private void BeginSearch(object sender, EventArgs e)
@@ -1462,9 +1479,6 @@ internal static class Native
 
     [DllImport("user32.dll", EntryPoint = "SendMessageW")]
     internal static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr word, IntPtr value);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
-    internal static extern IntPtr SendMessageText(IntPtr window, uint message, IntPtr word, string value);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     internal static extern int SHCreateItemFromParsingName(string path, IntPtr bindContext, ref Guid interfaceId,
