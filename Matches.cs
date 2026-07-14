@@ -289,8 +289,9 @@ internal sealed class LauncherForm : Form
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + Math.Max(24, area.Height / 8));
         if (!Visible) Show();
+        Native.SetForegroundWindow(Handle);
         Activate();
-        search.Focus();
+        search.Select();
         search.SelectAll();
     }
 
@@ -1452,6 +1453,9 @@ internal static class Native
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool SetProcessDPIAware();
+
+    [DllImport("user32.dll")]
+    internal static extern bool SetForegroundWindow(IntPtr window);
 
     [DllImport("user32.dll")]
     internal static extern bool ReleaseCapture();
