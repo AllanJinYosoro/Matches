@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 internal static class Program
 {
@@ -20,6 +21,7 @@ internal static class Program
     internal static int Main(string[] args)
     {
         if (args.Length == 1 && args[0] == "--self-test") return SelfTest();
+        var startHidden = args.Length == 1 && args[0] == "--startup";
 
         bool first;
         mutex = new Mutex(true, "Local\\Matches.App", out first);
@@ -35,7 +37,7 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         using (var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\Matches.Show"))
-        using (var form = new LauncherForm())
+        using (var form = new LauncherForm(startHidden))
         {
             var registration = ThreadPool.RegisterWaitForSingleObject(showEvent, delegate
             {
@@ -104,8 +106,41 @@ internal static class Program
                 HotkeyStore.TryParse(new[] { controlL, controlL, "F6" }, out testedHotkeys)) return 1;
             if (PowerHookRunner.StartInfo("C:\\test.ps1").FileName != "powershell.exe" ||
                 PowerHookRunner.StartInfo("C:\\test.txt") != null || !PowerHookRunner.SelfTest()) return 1;
+            if (AutoStart.CommandFor("C:\\Program Files\\Matches\\Matches.exe") !=
+                "\"C:\\Program Files\\Matches\\Matches.exe\" --startup") return 1;
             return 0;
         }
         catch { return 1; }
+    }
+}
+
+internal static class AutoStart
+{
+    private const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string ValueName = "Matches";
+
+    internal static string CommandFor(string executable)
+    {
+        return SearchClient.QuoteArgument(executable) + " --startup";
+    }
+
+    internal static bool IsEnabled()
+    {
+        try
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(KeyPath))
+                return key != null && String.Equals(key.GetValue(ValueName) as string,
+                    CommandFor(Application.ExecutablePath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    internal static void SetEnabled(bool enabled)
+    {
+        using (var key = Registry.CurrentUser.CreateSubKey(KeyPath))
+        {
+            if (enabled) key.SetValue(ValueName, CommandFor(Application.ExecutablePath), RegistryValueKind.String);
+            else key.DeleteValue(ValueName, false);
+        }
     }
 }

@@ -28,6 +28,7 @@ internal sealed partial class LauncherForm : Form
     private readonly NotifyIcon tray = new NotifyIcon();
     private readonly ContextMenuStrip addMenu = new ContextMenuStrip();
     private readonly ContextMenuStrip settingsMenu = new ContextMenuStrip();
+    private readonly ToolStripMenuItem autoStartItem = new ToolStripMenuItem();
     private readonly System.Windows.Forms.Timer searchTimer = new System.Windows.Forms.Timer();
     private readonly SearchClient client;
     private readonly Engine engine;
@@ -44,9 +45,11 @@ internal sealed partial class LauncherForm : Form
     private string currentFolder;
     private bool websiteIconsLoading;
     private bool powerActionRunning;
+    private bool startHidden;
 
-    internal LauncherForm()
+    internal LauncherForm(bool startHidden)
     {
+        this.startHidden = startHidden;
         client = new SearchClient(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Matches", "engine", "es.exe"));
@@ -167,6 +170,10 @@ internal sealed partial class LauncherForm : Form
         addMenu.Items.Add("添加网页网址", null, delegate { AddUrlShortcut(); });
         settingsMenu.Items.Add("快捷键设置...", null, delegate { EditHotkeys(); });
         settingsMenu.Items.Add("关机/重启前脚本...", null, delegate { EditPowerHooks(); });
+        autoStartItem.Text = "开机自动启动";
+        autoStartItem.Click += delegate { ToggleAutoStart(); };
+        settingsMenu.Items.Add(autoStartItem);
+        settingsMenu.Opening += delegate { autoStartItem.Checked = AutoStart.IsEnabled(); };
         settingsMenu.Items.Add(new ToolStripSeparator());
         settingsMenu.Items.Add("恢复默认快捷入口", null, delegate { RestoreDefaultShortcuts(); });
         settingsMenu.Items.Add("打开配置目录", null, delegate { OpenConfigurationDirectory(); });
@@ -232,7 +239,8 @@ internal sealed partial class LauncherForm : Form
 
     private void OnShown(object sender, EventArgs e)
     {
-        ShowLauncher();
+        if (startHidden) { startHidden = false; Hide(); }
+        else ShowLauncher();
         CacheWebsiteIcons();
         Task.Factory.StartNew<string>(delegate { return engine.Start(); }).ContinueWith(delegate(Task<string> task)
         {

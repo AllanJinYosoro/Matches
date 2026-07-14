@@ -2,3 +2,4 @@ dist/
 .build/
 private_scripts/*
 !private_scripts/.gitkeep
+!private_scripts/README.md

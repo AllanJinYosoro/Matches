@@ -169,6 +169,21 @@ internal sealed partial class LauncherForm
         }
     }
 
+    private void ToggleAutoStart()
+    {
+        try
+        {
+            var enabled = !AutoStart.IsEnabled();
+            AutoStart.SetEnabled(enabled);
+            autoStartItem.Checked = enabled;
+            status.Text = enabled ? "已启用开机自动启动" : "已关闭开机自动启动";
+        }
+        catch (Exception ex)
+        {
+            status.Text = "无法修改开机自动启动：" + ex.Message;
+        }
+    }
+
     private void EditPowerHooks()
     {
         using (var dialog = new PowerHookSettingsDialog(PowerHookStore.Load()))

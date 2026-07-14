@@ -1,21 +1,8 @@
 # AGENTS.md
 
-## 项目目标
-
-Matches 是“火柴”的独立后继项目。参考本机已安装的火柴 2.1.0.11，按实际需要复现、修改或删除功能；不要把它当作已有完整源码的继续维护项目。
-
-参考实现（只读）：
-
-- 安装目录：`C:\Users\Allan\AppData\Local\HuoChat`
-- 主程序：`HuoChat.exe`
-- 已知组件：DuiLib、SQLite、Everything 1.4.1、MiniBlink/WebView、明文 HTML/CSS/JavaScript
-- 已发现的 Web→原生接口包括：`getHistoryList`、`openUrl`、`saveAs`、`GetProfile` 等
-
 ## 不可违反的边界
 
-- 绝不直接修改火柴安装目录及其中的用户数据。
-- 原安装目录、`Everything.db`、`site.db`、配置、日志、崩溃转储、聊天记录和账号信息均按敏感数据处理。
-- 不把火柴的 EXE、DLL、数据库、专有资源、凭据或个人数据提交到 Git。
+- 不把EXE、DLL、数据库、专有资源、凭据或个人数据提交到 Git。
 - 需要样本时，创建最小、脱敏、可公开的测试夹具。
 - 不声称反编译结果是“原始源码”；函数名、类型和控制流可能不完整或不准确。
 - 只为明确的兼容或功能目标做定向分析，不进行无目标的整包反编译。
