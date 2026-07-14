@@ -38,6 +38,8 @@ internal sealed partial class LauncherForm : Form
     private int generation;
     private int hoveredResultIndex = -1;
     private int hoveredResultAction;
+    private int selectedShortcutIndex = -1;
+    private bool shortcutControlPending;
     private bool engineReady;
     private bool exiting;
     private bool webSearchMode;
@@ -194,6 +196,7 @@ internal sealed partial class LauncherForm : Form
         searchTimer.Tick += BeginSearch;
         search.TextChanged += SearchTextChanged;
         search.KeyDown += SearchKeyDown;
+        search.KeyUp += SearchKeyUp;
         results.KeyDown += ResultsKeyDown;
         results.KeyPress += ResultsKeyPress;
         Resize += delegate
@@ -227,6 +230,8 @@ internal sealed partial class LauncherForm : Form
 
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
+        var key = keyData & Keys.KeyCode;
+        if (key != Keys.ControlKey && key != Keys.LControlKey && key != Keys.RControlKey) shortcutControlPending = false;
         if (keyData == hotkeys.Locate) { RunFileAction(1); return true; }
         if (keyData == hotkeys.Copy) { RunFileAction(2); return true; }
         if (keyData == hotkeys.Codex) { RunFileAction(3); return true; }
@@ -282,6 +287,8 @@ internal sealed partial class LauncherForm : Form
         webSearchMode = enabled;
         folderMode = false;
         currentFolder = null;
+        shortcutControlPending = false;
+        SelectShortcut(-1);
         search.ForeColor = enabled ? Color.FromArgb(0, 102, 204) : SystemColors.WindowText;
         search.Clear();
         UpdateSearchCue();

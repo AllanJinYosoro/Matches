@@ -153,6 +153,7 @@ internal sealed class ShortcutTile : Control
     private readonly Action action;
     private readonly Image icon;
     private bool hover;
+    private bool selected;
     private bool pressed;
     private bool dragged;
     private int pressedAt;
@@ -168,6 +169,12 @@ internal sealed class ShortcutTile : Control
         Font = new Font("Microsoft YaHei UI", 9F);
         if (!add) icon = Ui.GetImage(item.Target, 48);
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+    }
+
+    internal bool Selected
+    {
+        get { return selected; }
+        set { if (selected != value) { selected = value; Invalidate(); } }
     }
 
     protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
@@ -204,10 +211,10 @@ internal sealed class ShortcutTile : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        if (hover)
+        if (selected || hover)
         {
             using (var path = Ui.RoundRectangle(new Rectangle(0, 0, Width - 1, Height - 1), 7))
-            using (var brush = new SolidBrush(Color.FromArgb(218, 235, 250))) e.Graphics.FillPath(brush, path);
+            using (var brush = new SolidBrush(selected ? Color.FromArgb(101, 34, 128) : Color.FromArgb(218, 235, 250))) e.Graphics.FillPath(brush, path);
         }
 
         if (add)
@@ -228,7 +235,7 @@ internal sealed class ShortcutTile : Control
         else e.Graphics.DrawImage(icon, new Rectangle((Width - 48) / 2, 8, 48, 48));
 
         TextRenderer.DrawText(e.Graphics, add ? "添加" : item.Name, Font,
-            new Rectangle(2, 65, Width - 4, 22), Color.FromArgb(30, 30, 30),
+            new Rectangle(2, 65, Width - 4, 22), selected ? Color.White : Color.FromArgb(30, 30, 30),
             TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
     }
 

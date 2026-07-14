@@ -16,6 +16,7 @@ internal sealed partial class LauncherForm
 {
     private void RebuildShortcuts()
     {
+        selectedShortcutIndex = -1;
         shortcuts.SuspendLayout();
         while (shortcuts.Controls.Count > 0)
         {
@@ -39,6 +40,45 @@ internal sealed partial class LauncherForm
             shortcuts.Controls.Add(tile);
         }
         shortcuts.ResumeLayout();
+    }
+
+    internal static int MoveShortcutSelection(int current, int count, int columns, Keys key)
+    {
+        if (count == 0) return -1;
+        if (current < 0) return 0;
+        columns = Math.Max(1, columns);
+        if (key == Keys.Left) return Math.Max(0, current - 1);
+        if (key == Keys.Right) return Math.Min(count - 1, current + 1);
+        if (key == Keys.Up) return Math.Max(0, current - columns);
+        if (key == Keys.Down) return Math.Min(count - 1, current + columns);
+        return current;
+    }
+
+    private void MoveShortcutSelection(Keys key)
+    {
+        if (shortcuts.Controls.Count == 0) return;
+        var tile = shortcuts.Controls[0];
+        var columns = Math.Max(1, (shortcuts.ClientSize.Width - shortcuts.Padding.Horizontal) /
+            (tile.Width + tile.Margin.Horizontal));
+        SelectShortcut(MoveShortcutSelection(selectedShortcutIndex, shortcuts.Controls.Count, columns, key));
+        status.Text = "按 Ctrl 打开：" + shortcutItems[selectedShortcutIndex].Name;
+    }
+
+    private void SelectShortcut(int index)
+    {
+        selectedShortcutIndex = index >= 0 && index < shortcuts.Controls.Count ? index : -1;
+        for (var i = 0; i < shortcuts.Controls.Count; i++)
+        {
+            var tile = shortcuts.Controls[i] as ShortcutTile;
+            if (tile != null) tile.Selected = i == selectedShortcutIndex;
+        }
+        if (selectedShortcutIndex >= 0) shortcuts.ScrollControlIntoView(shortcuts.Controls[selectedShortcutIndex]);
+    }
+
+    private void OpenSelectedShortcut()
+    {
+        if (selectedShortcutIndex >= 0 && selectedShortcutIndex < shortcutItems.Count)
+            OpenShortcut(shortcutItems[selectedShortcutIndex]);
     }
 
     private void ShortcutDragOver(object sender, DragEventArgs e)

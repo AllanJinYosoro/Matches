@@ -92,6 +92,11 @@ internal static class Program
             if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
                 LauncherForm.ResultActionAt(new Point(740, 24), row) != 2 ||
                 LauncherForm.ResultActionAt(new Point(100, 24), row) != 0) return 1;
+            if (LauncherForm.MoveShortcutSelection(-1, 3, 2, Keys.Left) != 0 ||
+                LauncherForm.MoveShortcutSelection(0, 3, 2, Keys.Right) != 1 ||
+                LauncherForm.MoveShortcutSelection(0, 3, 2, Keys.Down) != 2 ||
+                LauncherForm.MoveShortcutSelection(2, 3, 2, Keys.Up) != 0 ||
+                LauncherForm.MoveShortcutSelection(0, 0, 2, Keys.Down) != -1) return 1;
             var saved = ShortcutStore.Serialize(new ShortcutItem("测试", "C:\\目录\\程序.exe"));
             ShortcutItem restored;
             if (!ShortcutStore.TryParse(saved, out restored) || restored.Name != "测试" || restored.Target != "C:\\目录\\程序.exe") return 1;

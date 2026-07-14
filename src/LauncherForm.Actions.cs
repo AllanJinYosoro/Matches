@@ -16,7 +16,22 @@ internal sealed partial class LauncherForm
 {
     private void SearchKeyDown(object sender, KeyEventArgs e)
     {
-        if (!webSearchMode && e.KeyCode == Keys.Down && results.Items.Count > 0)
+        var controlKey = e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.LControlKey || e.KeyCode == Keys.RControlKey;
+        if (!controlKey) shortcutControlPending = false;
+        var shortcutHome = !webSearchMode && !folderMode && search.TextLength == 0;
+        if (shortcutHome && (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right ||
+            e.KeyCode == Keys.Up || e.KeyCode == Keys.Down))
+        {
+            MoveShortcutSelection(e.KeyCode);
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+        else if (shortcutHome && controlKey && selectedShortcutIndex >= 0)
+        {
+            shortcutControlPending = true;
+            e.Handled = true;
+        }
+        else if (!webSearchMode && e.KeyCode == Keys.Down && results.Items.Count > 0)
         {
             var next = results.Items[Math.Min(1, results.Items.Count - 1)];
             next.Selected = true;
@@ -38,6 +53,17 @@ internal sealed partial class LauncherForm
             else search.Clear();
             e.Handled = true;
         }
+    }
+
+    private void SearchKeyUp(object sender, KeyEventArgs e)
+    {
+        var controlKey = e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.LControlKey || e.KeyCode == Keys.RControlKey;
+        if (!controlKey || !shortcutControlPending) return;
+        shortcutControlPending = false;
+        keyboardHook.CancelControlSequence();
+        OpenSelectedShortcut();
+        e.Handled = true;
+        e.SuppressKeyPress = true;
     }
 
     private void OpenWebSearch()

@@ -32,6 +32,7 @@ internal sealed partial class LauncherForm
         generation++;
         client.Cancel();
         UpdateSearchCue();
+        if (search.TextLength > 0) SelectShortcut(-1);
         if (webSearchMode)
         {
             shortcuts.Visible = true;

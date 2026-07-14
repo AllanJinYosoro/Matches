@@ -58,6 +58,11 @@ internal sealed class KeyboardHook : IDisposable
         return Native.CallNextHookEx(hook, code, message, data);
     }
 
+    internal void CancelControlSequence()
+    {
+        lastControl = DateTime.MinValue;
+    }
+
     public void Dispose()
     {
         if (hook != IntPtr.Zero) { Native.UnhookWindowsHookEx(hook); hook = IntPtr.Zero; }
