@@ -83,6 +83,8 @@ internal static class Program
             if (!HotkeyStore.TryParse(new[] { controlL, "F5", "F6" }, out testedHotkeys) ||
                 testedHotkeys.Locate != (Keys.Control | Keys.L) || HotkeyStore.Format(testedHotkeys.Locate) != "Ctrl+L" ||
                 HotkeyStore.TryParse(new[] { controlL, controlL, "F6" }, out testedHotkeys)) return 1;
+            if (PowerHookRunner.StartInfo("C:\\test.ps1").FileName != "powershell.exe" ||
+                PowerHookRunner.StartInfo("C:\\test.txt") != null || !PowerHookRunner.SelfTest()) return 1;
             return 0;
         }
         catch { return 1; }
@@ -120,6 +122,7 @@ internal sealed class LauncherForm : Form
     private bool folderMode;
     private string currentFolder;
     private bool websiteIconsLoading;
+    private bool powerActionRunning;
 
     internal LauncherForm()
     {
@@ -242,6 +245,7 @@ internal sealed class LauncherForm : Form
         addMenu.Items.Add("添加文件夹", null, delegate { AddFolderShortcut(); });
         addMenu.Items.Add("添加网页网址", null, delegate { AddUrlShortcut(); });
         settingsMenu.Items.Add("快捷键设置...", null, delegate { EditHotkeys(); });
+        settingsMenu.Items.Add("关机/重启前脚本...", null, delegate { EditPowerHooks(); });
         settingsMenu.Items.Add(new ToolStripSeparator());
         settingsMenu.Items.Add("恢复默认快捷入口", null, delegate { RestoreDefaultShortcuts(); });
         settingsMenu.Items.Add("打开配置目录", null, delegate { OpenConfigurationDirectory(); });
@@ -817,6 +821,16 @@ internal sealed class LauncherForm : Form
         }
     }
 
+    private void EditPowerHooks()
+    {
+        using (var dialog = new PowerHookSettingsDialog(PowerHookStore.Load()))
+        {
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            PowerHookStore.Save(dialog.Scripts);
+            status.Text = "电源操作前脚本已保存";
+        }
+    }
+
     private void UpdateShortcutHint()
     {
         shortcutHint.Text = HotkeyStore.Format(hotkeys.Locate) + "  打开所在文件夹    " + HotkeyStore.Format(hotkeys.Copy) +
@@ -953,9 +967,37 @@ internal sealed class LauncherForm : Form
 
     private void ConfirmPowerAction(string action)
     {
+        if (powerActionRunning) return;
         var name = action == "restart" ? "重启" : "关机";
-        if (MessageBox.Show(this, "确定要" + name + " Windows？", name, MessageBoxButtons.OKCancel,
+        var scripts = PowerHookStore.Load();
+        var message = "确定要" + name + " Windows？" +
+            (scripts.Count == 0 ? String.Empty : "\r\n将先按顺序执行 " + scripts.Count + " 个脚本。");
+        if (MessageBox.Show(this, message, name, MessageBoxButtons.OKCancel,
             MessageBoxIcon.Warning) != DialogResult.OK) return;
+        if (scripts.Count == 0) { ExecutePowerAction(action); return; }
+        powerActionRunning = true;
+        status.Text = "正在执行电源操作前脚本…";
+        Task.Factory.StartNew(delegate { return PowerHookRunner.Run(scripts); }).ContinueWith(delegate(Task<string> task)
+        {
+            if (IsDisposed) return;
+            BeginInvoke((Action)delegate
+            {
+                powerActionRunning = false;
+                var error = task.IsFaulted ? task.Exception.GetBaseException().Message : task.Result;
+                if (error != null)
+                {
+                    status.Text = "已取消" + name + "：" + error;
+                    MessageBox.Show(this, status.Text, "Matches", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                ExecutePowerAction(action);
+            });
+        });
+    }
+
+    private void ExecutePowerAction(string action)
+    {
+        var name = action == "restart" ? "重启" : "关机";
         try
         {
             Process.Start(new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"))
@@ -1107,6 +1149,186 @@ internal sealed class UrlShortcutDialog : Form
         Controls.Add(cancel);
         AcceptButton = okay;
         CancelButton = cancel;
+    }
+}
+
+internal sealed class PowerHookSettingsDialog : Form
+{
+    private readonly ListBox list = new ListBox();
+    internal List<string> Scripts { get; private set; }
+
+    internal PowerHookSettingsDialog(List<string> scripts)
+    {
+        Text = "关机/重启前脚本";
+        ClientSize = new Size(620, 330);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        Font = new Font("Microsoft YaHei UI", 9F);
+        Controls.Add(new Label { Text = "脚本将从上到下依次执行；任一失败都会取消电源操作。", Location = new Point(16, 12), Size = new Size(570, 22) });
+        list.Location = new Point(16, 40);
+        list.Size = new Size(470, 236);
+        list.HorizontalScrollbar = true;
+        foreach (var script in scripts) list.Items.Add(script);
+        Controls.Add(list);
+
+        var add = new Button { Text = "添加...", Location = new Point(500, 40), Size = new Size(100, 28) };
+        var remove = new Button { Text = "删除", Location = new Point(500, 76), Size = new Size(100, 28) };
+        var up = new Button { Text = "上移", Location = new Point(500, 112), Size = new Size(100, 28) };
+        var down = new Button { Text = "下移", Location = new Point(500, 148), Size = new Size(100, 28) };
+        var openFolder = new Button { Text = "打开脚本目录", Location = new Point(500, 184), Size = new Size(100, 28) };
+        add.Click += delegate
+        {
+            Directory.CreateDirectory(PowerHookStore.PrivateDirectory);
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "选择电源操作前脚本";
+                dialog.InitialDirectory = PowerHookStore.PrivateDirectory;
+                dialog.Filter = "可执行脚本 (*.ps1;*.cmd;*.bat;*.py;*.exe)|*.ps1;*.cmd;*.bat;*.py;*.exe";
+                dialog.Multiselect = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                foreach (var file in dialog.FileNames) if (!list.Items.Contains(file)) list.Items.Add(file);
+            }
+        };
+        remove.Click += delegate { if (list.SelectedIndex >= 0) list.Items.RemoveAt(list.SelectedIndex); };
+        up.Click += delegate { MoveSelected(-1); };
+        down.Click += delegate { MoveSelected(1); };
+        openFolder.Click += delegate
+        {
+            Directory.CreateDirectory(PowerHookStore.PrivateDirectory);
+            Process.Start("explorer.exe", SearchClient.QuoteArgument(PowerHookStore.PrivateDirectory));
+        };
+        Controls.Add(add);
+        Controls.Add(remove);
+        Controls.Add(up);
+        Controls.Add(down);
+        Controls.Add(openFolder);
+
+        var okay = new Button { Text = "保存", Location = new Point(446, 288), Size = new Size(74, 28) };
+        var cancel = new Button { Text = "取消", Location = new Point(528, 288), Size = new Size(74, 28), DialogResult = DialogResult.Cancel };
+        okay.Click += delegate
+        {
+            Scripts = new List<string>();
+            foreach (var item in list.Items) Scripts.Add((string)item);
+            DialogResult = DialogResult.OK;
+        };
+        Controls.Add(okay);
+        Controls.Add(cancel);
+        AcceptButton = okay;
+        CancelButton = cancel;
+    }
+
+    private void MoveSelected(int change)
+    {
+        var from = list.SelectedIndex;
+        var to = from + change;
+        if (from < 0 || to < 0 || to >= list.Items.Count) return;
+        var item = list.Items[from];
+        list.Items.RemoveAt(from);
+        list.Items.Insert(to, item);
+        list.SelectedIndex = to;
+    }
+}
+
+internal static class PowerHookStore
+{
+    private static readonly string FilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Matches", "power-hooks.txt");
+
+    internal static string PrivateDirectory
+    {
+        get
+        {
+            var application = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+            var root = String.Equals(application.Name, "dist", StringComparison.OrdinalIgnoreCase) && application.Parent != null
+                ? application.Parent.FullName : application.FullName;
+            return Path.Combine(root, "private_scripts");
+        }
+    }
+
+    internal static List<string> Load()
+    {
+        var scripts = new List<string>();
+        try
+        {
+            if (File.Exists(FilePath)) foreach (var line in File.ReadAllLines(FilePath, Encoding.UTF8))
+                if (line.Trim().Length > 0) scripts.Add(line.Trim());
+        }
+        catch { }
+        return scripts;
+    }
+
+    internal static void Save(List<string> scripts)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+        File.WriteAllLines(FilePath, scripts.ToArray(), new UTF8Encoding(false));
+    }
+}
+
+internal static class PowerHookRunner
+{
+    internal static bool SelfTest()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Matches-hook-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var output = Path.Combine(directory, "order.txt");
+            var first = Path.Combine(directory, "1.cmd");
+            var second = Path.Combine(directory, "2.cmd");
+            var failure = Path.Combine(directory, "fail.cmd");
+            var afterFailure = Path.Combine(directory, "3.cmd");
+            File.WriteAllText(first, "@echo off\r\necho 1 >" + SearchClient.QuoteArgument(output) + "\r\n", Encoding.ASCII);
+            File.WriteAllText(second, "@echo off\r\necho 2 >>" + SearchClient.QuoteArgument(output) + "\r\n", Encoding.ASCII);
+            File.WriteAllText(failure, "@exit /b 5\r\n", Encoding.ASCII);
+            File.WriteAllText(afterFailure, "@echo off\r\necho 3 >>" + SearchClient.QuoteArgument(output) + "\r\n", Encoding.ASCII);
+            var error = Run(new List<string> { first, second });
+            var failureError = Run(new List<string> { failure, afterFailure });
+            var lines = File.Exists(output) ? File.ReadAllLines(output) : new string[0];
+            return error == null && failureError != null && lines.Length == 2 &&
+                   lines[0].Trim() == "1" && lines[1].Trim() == "2";
+        }
+        finally
+        {
+            try { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+            catch { }
+        }
+    }
+
+    internal static ProcessStartInfo StartInfo(string script)
+    {
+        var extension = Path.GetExtension(script).ToLowerInvariant();
+        var info = new ProcessStartInfo { UseShellExecute = false, CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(script) ?? Environment.CurrentDirectory };
+        if (extension == ".ps1") { info.FileName = "powershell.exe"; info.Arguments = "-NoProfile -ExecutionPolicy Bypass -File " + SearchClient.QuoteArgument(script); }
+        else if (extension == ".cmd" || extension == ".bat") { info.FileName = "cmd.exe"; info.Arguments = "/d /c " + SearchClient.QuoteArgument(script); }
+        else if (extension == ".py") { info.FileName = "python.exe"; info.Arguments = SearchClient.QuoteArgument(script); }
+        else if (extension == ".exe") info.FileName = script;
+        else return null;
+        return info;
+    }
+
+    internal static string Run(List<string> scripts)
+    {
+        // ponytail: hooks intentionally have no timeout; add per-script limits if unattended hooks can hang.
+        foreach (var script in scripts)
+        {
+            if (!File.Exists(script)) return "脚本不存在：" + script;
+            var info = StartInfo(script);
+            if (info == null) return "不支持的脚本类型：" + script;
+            try
+            {
+                using (var process = Process.Start(info))
+                {
+                    process.WaitForExit();
+                    if (process.ExitCode != 0) return Path.GetFileName(script) + " 返回退出码 " + process.ExitCode;
+                }
+            }
+            catch (Exception ex) { return Path.GetFileName(script) + " 执行失败：" + ex.Message; }
+        }
+        return null;
     }
 }
 
