@@ -60,7 +60,7 @@ internal static class Program
             var paths = SearchClient.ParseResults("\uFEFFC:\\测试 文件.txt\r\nD:\\目录\r\n");
             if (paths.Count != 2 || paths[0] != "C:\\测试 文件.txt" || paths[1] != "D:\\目录") return 1;
             var arguments = SearchClient.BuildArguments("Matches", "C:\\temp\\result.txt");
-            if (arguments.Contains("name:") || !arguments.Contains("-n 500") || !arguments.Contains("\"Matches\"")) return 1;
+            if (arguments.Contains("name:") || !arguments.Contains("-n 500") || !arguments.Contains("-sort name-descending") || !arguments.Contains("\"Matches\"")) return 1;
             var ranked = SearchClient.RankResults("MonoCloud", new List<string>
             {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "MonoCloud"),

@@ -64,7 +64,7 @@ internal sealed class SearchClient
     internal static string BuildArguments(string query, string outputFile)
     {
         // ponytail: 500 candidates keep per-keystroke sorting cheap; raise this if launchers are measurably missed.
-        return "-instance Matches -n 500 -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
+        return "-instance Matches -n 500 -sort name-descending -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
                " -utf8-bom " + QuoteArgument(query);
     }
 
