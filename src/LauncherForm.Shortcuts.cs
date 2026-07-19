@@ -105,20 +105,11 @@ internal sealed partial class LauncherForm
         status.Text = "已调整快捷入口位置";
     }
 
-    private void PopulateRegisteredAppsMenu(ToolStripMenuItem menu)
+    private void AddRegisteredApplication()
     {
-        if (menu.DropDownItems.Count > 0) return;
-        var applications = RegisteredApplicationStore.Load();
-        if (applications.Count == 0)
+        using (var dialog = new RegisteredApplicationDialog(RegisteredApplicationStore.Load()))
         {
-            var empty = menu.DropDownItems.Add("未找到已登记的软件");
-            empty.Enabled = false;
-            return;
-        }
-        foreach (var application in applications)
-        {
-            var current = application;
-            menu.DropDownItems.Add(current.Name, null, delegate { AddShortcut(current); });
+            if (dialog.ShowDialog(this) == DialogResult.OK) AddShortcut(dialog.Shortcut);
         }
     }
 

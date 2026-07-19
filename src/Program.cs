@@ -134,6 +134,10 @@ internal static class Program
             for (var index = 0; index < registered.Count; index++)
                 if (!File.Exists(registered[index].Target) || (index > 0 &&
                     StringComparer.CurrentCultureIgnoreCase.Compare(registered[index - 1].Name, registered[index].Name) > 0)) return 1;
+            var matchable = new ShortcutItem("Visual Studio Code", @"C:\Apps\Code.exe");
+            if (!RegisteredApplicationDialog.Matches(matchable, "studio") ||
+                !RegisteredApplicationDialog.Matches(matchable, "code.exe") ||
+                RegisteredApplicationDialog.Matches(matchable, "Word")) return 1;
             if (LauncherForm.ListFolder(AppDomain.CurrentDomain.BaseDirectory).Count == 0) return 1;
             if (Ui.WebsiteIconPath("https://chatgpt.com/a") != Ui.WebsiteIconPath("https://chatgpt.com/b") ||
                 Ui.WebsiteIconPath("C:\\temp") != null) return 1;

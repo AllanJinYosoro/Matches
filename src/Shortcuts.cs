@@ -126,6 +126,296 @@ internal static class RegisteredApplicationStore
     }
 }
 
+internal sealed class RegisteredApplicationDialog : Form
+{
+    private readonly List<RegisteredApplicationCard> cards = new List<RegisteredApplicationCard>();
+    private readonly FlowLayoutPanel applicationList = new FlowLayoutPanel();
+    private readonly TextBox filter = new TextBox();
+    private readonly Label filterCue = new Label();
+    private readonly Label count = new Label();
+    private readonly Label empty = new Label();
+    private readonly Button add = new Button();
+    private readonly ToolTip toolTip = new ToolTip();
+    private readonly Font headingFont = new Font("Microsoft YaHei UI", 18F, FontStyle.Bold);
+    private RegisteredApplicationCard selectedCard;
+
+    internal ShortcutItem Shortcut { get; private set; }
+
+    internal RegisteredApplicationDialog(List<ShortcutItem> applications)
+    {
+        Text = "选择已安装的软件";
+        ClientSize = new Size(760, 550);
+        MinimumSize = new Size(650, 460);
+        StartPosition = FormStartPosition.CenterParent;
+        ShowInTaskbar = false;
+        ShowIcon = false;
+        MaximizeBox = false;
+        Font = new Font("Microsoft YaHei UI", 10F);
+        BackColor = Color.FromArgb(247, 248, 250);
+
+        var heading = new Label
+        {
+            Text = "选择已安装的软件",
+            Font = headingFont,
+            ForeColor = Color.FromArgb(35, 35, 40),
+            Location = new Point(24, 17),
+            AutoSize = true
+        };
+        var description = new Label
+        {
+            Text = "从 Windows 注册表中找到的程序 · 选择后添加到主页",
+            ForeColor = Color.FromArgb(112, 112, 120),
+            Location = new Point(25, 54),
+            AutoSize = true
+        };
+
+        var searchHost = new Panel
+        {
+            Location = new Point(24, 82),
+            Size = new Size(712, 42),
+            Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
+            BackColor = Color.White
+        };
+        searchHost.Resize += delegate { Ui.ApplyRoundedRegion(searchHost, 10); };
+        filter.BorderStyle = BorderStyle.None;
+        filter.BackColor = searchHost.BackColor;
+        filter.Font = new Font("Microsoft YaHei UI", 11F);
+        filter.Location = new Point(14, 9);
+        filter.Size = new Size(684, 26);
+        filter.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
+        filterCue.Text = "搜索软件名称或可执行文件";
+        filterCue.ForeColor = Color.FromArgb(145, 145, 152);
+        filterCue.BackColor = searchHost.BackColor;
+        filterCue.Location = new Point(15, 10);
+        filterCue.AutoSize = true;
+        filterCue.Cursor = Cursors.IBeam;
+        filterCue.Click += delegate { filter.Focus(); };
+        searchHost.Controls.Add(filter);
+        searchHost.Controls.Add(filterCue);
+        filterCue.BringToFront();
+
+        applicationList.Location = new Point(18, 140);
+        applicationList.Size = new Size(724, 340);
+        applicationList.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+        applicationList.Padding = new Padding(6);
+        applicationList.AutoScroll = true;
+        applicationList.WrapContents = true;
+        applicationList.BackColor = BackColor;
+
+        empty.Text = "没有找到匹配的软件";
+        empty.ForeColor = Color.FromArgb(125, 125, 132);
+        empty.TextAlign = ContentAlignment.MiddleCenter;
+        empty.Size = new Size(680, 72);
+        empty.Margin = new Padding(6, 24, 6, 6);
+        empty.Visible = false;
+
+        count.Location = new Point(24, 505);
+        count.Size = new Size(420, 24);
+        count.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        count.ForeColor = Color.FromArgb(112, 112, 120);
+
+        var cancel = new Button
+        {
+            Text = "取消",
+            Location = new Point(568, 496),
+            Size = new Size(80, 38),
+            Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
+            DialogResult = DialogResult.Cancel,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.White,
+            Cursor = Cursors.Hand
+        };
+        cancel.FlatAppearance.BorderColor = Color.FromArgb(215, 215, 220);
+        add.Text = "添加";
+        add.Location = new Point(656, 496);
+        add.Size = new Size(80, 38);
+        add.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+        add.FlatStyle = FlatStyle.Flat;
+        add.FlatAppearance.BorderSize = 0;
+        add.BackColor = Color.FromArgb(101, 34, 128);
+        add.ForeColor = Color.White;
+        add.Cursor = Cursors.Hand;
+        add.Enabled = false;
+        add.Click += delegate { if (selectedCard != null) AcceptApplication(selectedCard); };
+
+        foreach (var application in applications)
+        {
+            var card = new RegisteredApplicationCard(application, SelectApplication, AcceptApplication);
+            cards.Add(card);
+            applicationList.Controls.Add(card);
+            toolTip.SetToolTip(card, application.Target);
+        }
+        applicationList.Controls.Add(empty);
+
+        Controls.Add(heading);
+        Controls.Add(description);
+        Controls.Add(searchHost);
+        Controls.Add(applicationList);
+        Controls.Add(count);
+        Controls.Add(cancel);
+        Controls.Add(add);
+        AcceptButton = add;
+        CancelButton = cancel;
+
+        filter.TextChanged += FilterApplications;
+        Shown += delegate { filter.Focus(); };
+        Resize += delegate
+        {
+            Ui.ApplyRoundedRegion(searchHost, 10);
+            Ui.ApplyRoundedRegion(add, 8);
+            Ui.ApplyRoundedRegion(cancel, 8);
+        };
+        Ui.ApplyRoundedRegion(searchHost, 10);
+        Ui.ApplyRoundedRegion(add, 8);
+        Ui.ApplyRoundedRegion(cancel, 8);
+        FilterApplications(null, EventArgs.Empty);
+    }
+
+    internal static bool Matches(ShortcutItem application, string query)
+    {
+        query = query.Trim();
+        return query.Length == 0 ||
+            application.Name.IndexOf(query, StringComparison.CurrentCultureIgnoreCase) >= 0 ||
+            Path.GetFileName(application.Target).IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+            application.Target.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private void FilterApplications(object sender, EventArgs e)
+    {
+        filterCue.Visible = filter.TextLength == 0;
+        var visible = 0;
+        applicationList.SuspendLayout();
+        foreach (var card in cards)
+        {
+            var matches = Matches(card.Item, filter.Text);
+            card.Visible = matches;
+            if (matches) visible++;
+        }
+        empty.Visible = visible == 0;
+        applicationList.ResumeLayout();
+        if (selectedCard != null && !Matches(selectedCard.Item, filter.Text)) SelectApplication(null);
+        count.Text = "显示 " + visible + " / " + cards.Count + " 个软件";
+    }
+
+    private void SelectApplication(RegisteredApplicationCard card)
+    {
+        selectedCard = card;
+        foreach (var item in cards) item.Selected = item == card;
+        add.Enabled = card != null;
+    }
+
+    private void AcceptApplication(RegisteredApplicationCard card)
+    {
+        SelectApplication(card);
+        Shortcut = card.Item;
+        DialogResult = DialogResult.OK;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            toolTip.Dispose();
+            headingFont.Dispose();
+            filter.Font.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}
+
+internal sealed class RegisteredApplicationCard : Control
+{
+    private readonly Image icon;
+    private readonly Action<RegisteredApplicationCard> select;
+    private readonly Action<RegisteredApplicationCard> accept;
+    private readonly Font titleFont = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+    private readonly Font detailFont = new Font("Microsoft YaHei UI", 8.5F);
+    private bool hover;
+    private bool selected;
+
+    internal readonly ShortcutItem Item;
+
+    internal RegisteredApplicationCard(ShortcutItem item, Action<RegisteredApplicationCard> selected,
+        Action<RegisteredApplicationCard> accepted)
+    {
+        Item = item;
+        select = selected;
+        accept = accepted;
+        icon = Ui.GetImage(item.Target, 44);
+        Size = new Size(220, 76);
+        Margin = new Padding(5);
+        Cursor = Cursors.Hand;
+        TabStop = true;
+        AccessibleRole = AccessibleRole.ListItem;
+        AccessibleName = item.Name;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer | ControlStyles.StandardClick | ControlStyles.StandardDoubleClick, true);
+    }
+
+    internal bool Selected
+    {
+        get { return selected; }
+        set { if (selected != value) { selected = value; Invalidate(); } }
+    }
+
+    protected override void OnClick(EventArgs e)
+    {
+        Focus();
+        select(this);
+        base.OnClick(e);
+    }
+
+    protected override void OnDoubleClick(EventArgs e)
+    {
+        accept(this);
+        base.OnDoubleClick(e);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Enter) { accept(this); e.Handled = true; }
+        else if (e.KeyCode == Keys.Space) { select(this); e.Handled = true; }
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+    protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+        using (var path = Ui.RoundRectangle(bounds, 10))
+        using (var background = new SolidBrush(selected ? Color.FromArgb(240, 230, 246) :
+            hover || Focused ? Color.FromArgb(238, 242, 248) : Color.White))
+        using (var border = new Pen(selected ? Color.FromArgb(101, 34, 128) : Color.FromArgb(226, 227, 232),
+            selected ? 1.8F : 1F))
+        {
+            e.Graphics.FillPath(background, path);
+            e.Graphics.DrawPath(border, path);
+        }
+        e.Graphics.DrawImage(icon, new Rectangle(12, 16, 44, 44));
+        TextRenderer.DrawText(e.Graphics, Item.Name, titleFont, new Rectangle(66, 13, Width - 76, 24),
+            Color.FromArgb(38, 38, 44), TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(e.Graphics, Path.GetFileName(Item.Target), detailFont, new Rectangle(66, 41, Width - 76, 20),
+            Color.FromArgb(122, 122, 130), TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+        if (Focused) ControlPaint.DrawFocusRectangle(e.Graphics, new Rectangle(4, 4, Width - 8, Height - 8));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            icon.Dispose();
+            titleFont.Dispose();
+            detailFont.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}
+
 internal static class ShortcutStore
 {
     private static readonly string FilePath = Path.Combine(
