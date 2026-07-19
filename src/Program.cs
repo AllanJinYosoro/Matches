@@ -114,7 +114,7 @@ internal static class Program
             using (var uninstall = Ui.UninstallImage(32))
                 if (uninstall.Size != new Size(32, 32) || ((Bitmap)uninstall).GetPixel(16, 9).A == 0) return 1;
             if (!File.Exists(Path.Combine(Environment.SystemDirectory, "appwiz.cpl"))) return 1;
-            var row = new Rectangle(0, 0, 770, 48);
+            var row = new Rectangle(0, 0, 770, 54);
             if (LauncherForm.ResultActionAt(new Point(710, 24), row) != 1 ||
                 LauncherForm.ResultActionAt(new Point(740, 24), row) != 2 ||
                 LauncherForm.ResultActionAt(new Point(100, 24), row) != 0) return 1;

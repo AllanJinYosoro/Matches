@@ -24,7 +24,7 @@ internal sealed partial class LauncherForm : Form
     private readonly Label shortcutHint = new Label();
     private readonly Label status = new Label();
     private readonly Button settings = new Button();
-    private readonly Font resultPathFont = new Font("Microsoft YaHei UI", 8.5F);
+    private readonly Font resultPathFont = new Font("Microsoft YaHei UI", 9.5F);
     private readonly NotifyIcon tray = new NotifyIcon();
     private readonly ContextMenuStrip addMenu = new ContextMenuStrip();
     private readonly ContextMenuStrip settingsMenu = new ContextMenuStrip();
@@ -60,12 +60,12 @@ internal sealed partial class LauncherForm : Form
 
         Text = "Matches";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        ClientSize = new Size(900, 600);
+        ClientSize = new Size(808, 540);
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
-        Font = new Font("Microsoft YaHei UI", 9F);
+        Font = new Font("Microsoft YaHei UI", 10F);
         BackColor = Color.FromArgb(250, 250, 250);
 
         searchHost.Location = new Point(10, 10);
@@ -77,15 +77,15 @@ internal sealed partial class LauncherForm : Form
 
         search.BorderStyle = BorderStyle.None;
         search.BackColor = searchHost.BackColor;
-        search.Font = new Font("Microsoft YaHei UI", 16F);
-        search.Location = new Point(18, 16);
-        search.Size = new Size(752, 32);
+        search.Font = new Font("Microsoft YaHei UI", 18F);
+        search.Location = new Point(18, 12);
+        search.Size = new Size(752, 39);
         search.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
         searchHost.Controls.Add(search);
         searchCue.AutoSize = true;
         searchCue.BackColor = searchHost.BackColor;
         searchCue.Font = search.Font;
-        searchCue.Location = new Point(18, 14);
+        searchCue.Location = new Point(18, 11);
         searchCue.Text = "搜索本地文件或应用";
         searchCue.ForeColor = Color.FromArgb(120, 120, 120);
         searchCue.Cursor = Cursors.IBeam;
@@ -97,7 +97,7 @@ internal sealed partial class LauncherForm : Form
         shortcuts.Size = new Size(788, 394);
         shortcuts.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
         shortcuts.BackColor = BackColor;
-        shortcuts.Padding = new Padding(6, 0, 0, 0);
+        shortcuts.Padding = new Padding(7, 0, 0, 0);
         shortcuts.WrapContents = true;
         shortcuts.AutoScroll = true;
         shortcuts.AllowDrop = true;
@@ -106,7 +106,7 @@ internal sealed partial class LauncherForm : Form
         shortcuts.DragDrop += ShortcutDragDrop;
 
         addTile = new ShortcutTile(null, true, delegate { addMenu.Show(Cursor.Position); });
-        addTile.Location = new Point(704, 378);
+        addTile.Location = new Point(694, 368);
         addTile.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
 
         results.Location = shortcuts.Location;
@@ -121,9 +121,9 @@ internal sealed partial class LauncherForm : Form
         results.BackColor = BackColor;
         results.OwnerDraw = true;
         results.Columns.Add(String.Empty, 770);
-        resultRowHeight.ImageSize = new Size(1, 48);
+        resultRowHeight.ImageSize = new Size(1, 54);
         resultRowHeight.ColorDepth = ColorDepth.Depth32Bit;
-        resultRowHeight.Images.Add(new Bitmap(1, 48));
+        resultRowHeight.Images.Add(new Bitmap(1, 54));
         results.SmallImageList = resultRowHeight;
         results.DrawItem += DrawResultItem;
         results.DrawSubItem += DrawResultSubItem;
@@ -135,25 +135,25 @@ internal sealed partial class LauncherForm : Form
         results.Visible = false;
 
         shortcutHint.Location = new Point(16, 484);
-        shortcutHint.Size = new Size(730, 22);
+        shortcutHint.Size = new Size(730, 24);
         shortcutHint.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         shortcutHint.ForeColor = Color.FromArgb(115, 115, 115);
         UpdateShortcutHint();
 
         status.Location = new Point(16, 510);
-        status.Size = new Size(700, 22);
+        status.Size = new Size(700, 24);
         status.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
         status.ForeColor = Color.FromArgb(105, 105, 105);
         status.Text = "正在启动本地搜索…";
 
-        settings.Location = new Point(764, 504);
-        settings.Size = new Size(34, 30);
+        settings.Location = new Point(760, 501);
+        settings.Size = new Size(38, 33);
         settings.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
         settings.FlatStyle = FlatStyle.Flat;
         settings.FlatAppearance.BorderSize = 0;
         settings.BackColor = BackColor;
         settings.ForeColor = Color.FromArgb(80, 80, 80);
-        settings.Font = new Font("Segoe UI Symbol", 15F);
+        settings.Font = new Font("Segoe UI Symbol", 17F);
         settings.Text = "⚙";
         settings.Cursor = Cursors.Hand;
         settings.Click += delegate { settingsMenu.Show(settings, new Point(settings.Width, 0), ToolStripDropDownDirection.AboveLeft); };
@@ -212,6 +212,7 @@ internal sealed partial class LauncherForm : Form
         Shown += OnShown;
 
         shortcutItems = ShortcutStore.Load();
+        ClientSize = new Size(900, 600);
         RebuildShortcuts();
         keyboardHook = new KeyboardHook(delegate
         {

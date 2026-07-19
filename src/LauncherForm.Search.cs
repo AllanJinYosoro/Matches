@@ -214,16 +214,16 @@ internal sealed partial class LauncherForm
         var result = e.Item.Tag as SearchResult;
         if (result == null) return;
         if (result.Image == null) result.Image = result.PowerAction == null
-            ? Ui.GetImage(result.Path, 32) : Ui.PowerImage(result.PowerAction, 32);
+            ? Ui.GetImage(result.Path, 36) : Ui.PowerImage(result.PowerAction, 36);
         var selected = e.Item.Selected;
         var bounds = e.Bounds;
-        e.Graphics.DrawImage(result.Image, new Rectangle(bounds.Left + 12, bounds.Top + 8, 32, 32));
+        e.Graphics.DrawImage(result.Image, new Rectangle(bounds.Left + 13, bounds.Top + 9, 36, 36));
         TextRenderer.DrawText(e.Graphics, result.Name, Font,
-            new Rectangle(bounds.Left + 54, bounds.Top + 4, bounds.Width - 145, 21),
+            new Rectangle(bounds.Left + 60, bounds.Top + 4, bounds.Width - 161, 23),
             selected ? Color.White : Color.FromArgb(32, 32, 32),
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         TextRenderer.DrawText(e.Graphics, result.Directory, resultPathFont,
-            new Rectangle(bounds.Left + 54, bounds.Top + 25, bounds.Width - 145, 18),
+            new Rectangle(bounds.Left + 60, bounds.Top + 28, bounds.Width - 161, 20),
             selected ? Color.FromArgb(235, 218, 242) : Color.FromArgb(140, 140, 140),
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         if (e.Item.Index == hoveredResultIndex) DrawResultActions(e.Graphics, bounds, selected);
@@ -231,7 +231,7 @@ internal sealed partial class LauncherForm
 
     private static Rectangle ResultButton(Rectangle row, int action)
     {
-        return new Rectangle(row.Right - (action == 1 ? 70 : 36), row.Top + 9, 28, 28);
+        return new Rectangle(row.Right - (action == 1 ? 78 : 40), row.Top + 10, 31, 31);
     }
 
     internal static int ResultActionAt(Point point, Rectangle row)
@@ -252,20 +252,20 @@ internal sealed partial class LauncherForm
             if (hoveredResultAction == action)
             {
                 using (var brush = new SolidBrush(selected ? Color.FromArgb(130, 255, 255, 255) : Color.FromArgb(232, 226, 235)))
-                using (var path = Ui.RoundRectangle(button, 5))
+                using (var path = Ui.RoundRectangle(button, 6))
                     graphics.FillPath(brush, path);
             }
-            using (var pen = new Pen(color, 1.6F))
+            using (var pen = new Pen(color, 1.8F))
             {
                 if (action == 1)
                 {
-                    graphics.DrawLines(pen, new[] { new Point(button.Left + 6, button.Top + 11), new Point(button.Left + 6, button.Top + 8), new Point(button.Left + 12, button.Top + 8), new Point(button.Left + 14, button.Top + 11), new Point(button.Right - 6, button.Top + 11), new Point(button.Right - 6, button.Bottom - 7), new Point(button.Left + 6, button.Bottom - 7), new Point(button.Left + 6, button.Top + 11) });
-                    graphics.DrawLine(pen, button.Left + 9, button.Bottom - 10, button.Right - 9, button.Top + 14);
+                    graphics.DrawLines(pen, new[] { new Point(button.Left + 7, button.Top + 12), new Point(button.Left + 7, button.Top + 9), new Point(button.Left + 13, button.Top + 9), new Point(button.Left + 16, button.Top + 12), new Point(button.Right - 7, button.Top + 12), new Point(button.Right - 7, button.Bottom - 8), new Point(button.Left + 7, button.Bottom - 8), new Point(button.Left + 7, button.Top + 12) });
+                    graphics.DrawLine(pen, button.Left + 10, button.Bottom - 11, button.Right - 10, button.Top + 16);
                 }
                 else
                 {
-                    graphics.DrawRectangle(pen, button.Left + 10, button.Top + 7, 11, 13);
-                    graphics.DrawRectangle(pen, button.Left + 7, button.Top + 10, 11, 13);
+                    graphics.DrawRectangle(pen, button.Left + 11, button.Top + 8, 12, 14);
+                    graphics.DrawRectangle(pen, button.Left + 8, button.Top + 11, 12, 14);
                 }
             }
         }

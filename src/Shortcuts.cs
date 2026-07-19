@@ -214,11 +214,11 @@ internal sealed class ShortcutTile : Control
         item = shortcut;
         add = isAdd;
         action = clicked;
-        Size = new Size(86, 94);
-        Margin = new Padding(5, 4, 5, 4);
+        Size = new Size(96, 104);
+        Margin = new Padding(6, 5, 6, 5);
         Cursor = Cursors.Hand;
-        Font = new Font("Microsoft YaHei UI", 9F);
-        if (!add) icon = Ui.GetImage(item.Target, 48);
+        Font = new Font("Microsoft YaHei UI", 10F);
+        if (!add) icon = Ui.GetImage(item.Target, 54);
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
     }
 
@@ -264,29 +264,29 @@ internal sealed class ShortcutTile : Control
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         if (selected || hover)
         {
-            using (var path = Ui.RoundRectangle(new Rectangle(0, 0, Width - 1, Height - 1), 7))
+            using (var path = Ui.RoundRectangle(new Rectangle(0, 0, Width - 1, Height - 1), 8))
             using (var brush = new SolidBrush(selected ? Color.FromArgb(101, 34, 128) : Color.FromArgb(218, 235, 250))) e.Graphics.FillPath(brush, path);
         }
 
         if (add)
         {
-            var box = new Rectangle((Width - 48) / 2, 8, 48, 48);
-            using (var path = Ui.RoundRectangle(box, 8))
+            var box = new Rectangle((Width - 54) / 2, 9, 54, 54);
+            using (var path = Ui.RoundRectangle(box, 9))
             using (var pen = new Pen(Color.FromArgb(155, 155, 155)))
             {
                 pen.DashStyle = DashStyle.Dash;
                 e.Graphics.DrawPath(pen, path);
             }
-            using (var pen = new Pen(Color.FromArgb(155, 155, 155), 1.5F))
+            using (var pen = new Pen(Color.FromArgb(155, 155, 155), 1.7F))
             {
-                e.Graphics.DrawLine(pen, box.Left + 14, box.Top + 24, box.Right - 14, box.Top + 24);
-                e.Graphics.DrawLine(pen, box.Left + 24, box.Top + 14, box.Left + 24, box.Bottom - 14);
+                e.Graphics.DrawLine(pen, box.Left + 16, box.Top + 27, box.Right - 16, box.Top + 27);
+                e.Graphics.DrawLine(pen, box.Left + 27, box.Top + 16, box.Left + 27, box.Bottom - 16);
             }
         }
-        else e.Graphics.DrawImage(icon, new Rectangle((Width - 48) / 2, 8, 48, 48));
+        else e.Graphics.DrawImage(icon, new Rectangle((Width - 54) / 2, 9, 54, 54));
 
         TextRenderer.DrawText(e.Graphics, add ? "添加" : item.Name, Font,
-            new Rectangle(2, 65, Width - 4, 22), selected ? Color.White : Color.FromArgb(30, 30, 30),
+            new Rectangle(2, 72, Width - 4, 24), selected ? Color.White : Color.FromArgb(30, 30, 30),
             TextFormatFlags.HorizontalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
     }
 
