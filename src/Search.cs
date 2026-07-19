@@ -22,12 +22,19 @@ internal sealed class SearchClient
 
     internal List<string> Search(string query)
     {
+        var launchables = RunSearch(query, true);
+        var general = RunSearch(query, false);
+        return RankResults(query, ParseResults(launchables + "\n" + general), 100);
+    }
+
+    private string RunSearch(string query, bool launchableOnly)
+    {
         if (!File.Exists(executable)) throw new FileNotFoundException("es.exe 不存在", executable);
         var outputFile = Path.Combine(Path.GetTempPath(), "Matches-" + Guid.NewGuid().ToString("N") + ".txt");
         var info = new ProcessStartInfo
         {
             FileName = executable,
-            Arguments = BuildArguments(query, outputFile),
+            Arguments = BuildArguments(query, outputFile, launchableOnly),
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true
@@ -41,7 +48,7 @@ internal sealed class SearchClient
             process.WaitForExit();
             if (process.ExitCode == 8) throw new InvalidOperationException("Everything 实例尚未就绪");
             if (process.ExitCode != 0) throw new InvalidOperationException(error.Length == 0 ? "ES 错误 " + process.ExitCode : error.Trim());
-            return RankResults(query, ParseResults(File.Exists(outputFile) ? File.ReadAllText(outputFile, Encoding.UTF8) : String.Empty), 100);
+            return File.Exists(outputFile) ? File.ReadAllText(outputFile, Encoding.UTF8) : String.Empty;
         }
         finally
         {
@@ -61,11 +68,24 @@ internal sealed class SearchClient
         }
     }
 
-    internal static string BuildArguments(string query, string outputFile)
+    internal static string BuildArguments(string query, string outputFile, bool launchableOnly = false)
     {
-        // ponytail: 500 candidates keep per-keystroke sorting cheap; raise this if launchers are measurably missed.
-        return "-instance Matches -n 500 -sort name-descending -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
-               " -utf8-bom " + QuoteArgument(query);
+        // ponytail: separate 100 launchable and 500 general candidates; raise only if measured misses remain.
+        var search = launchableOnly ? ApplicationQuery(query) : query;
+        return "-instance Matches -n " + (launchableOnly ? "100" : "500") + " -full-path-and-name -export-txt " + QuoteArgument(outputFile) +
+               " -utf8-bom " + QuoteArgument(search) + (launchableOnly ? " ext:lnk;exe;url;appref-ms;com;bat;cmd" : String.Empty);
+    }
+
+    internal static string ApplicationQuery(string query)
+    {
+        var pattern = new StringBuilder();
+        foreach (var character in query.Trim().Trim('"'))
+        {
+            if (!Char.IsLetterOrDigit(character)) continue;
+            if (pattern.Length > 0) pattern.Append('*');
+            pattern.Append(character);
+        }
+        return pattern.Length == 0 ? query : pattern.Append('*').ToString();
     }
 
     internal static List<string> RankResults(string query, List<string> paths, int maximum)
@@ -82,20 +102,31 @@ internal sealed class SearchClient
             var ranked = scores[right].CompareTo(scores[left]);
             return ranked != 0 ? ranked : order[left].CompareTo(order[right]);
         });
-        if (paths.Count > maximum) paths.RemoveRange(maximum, paths.Count - maximum);
+
+        var seenLaunchables = new HashSet<string>(StringComparer.Ordinal);
+        var count = 0;
+        for (var index = 0; index < paths.Count && count < maximum; index++)
+        {
+            var key = LaunchableNameKey(paths[index]);
+            if (key != null && !seenLaunchables.Add(key)) continue;
+            paths[count++] = paths[index];
+        }
+        if (paths.Count > count) paths.RemoveRange(count, paths.Count - count);
         return paths;
     }
 
     private static int RankScore(string query, string path)
     {
         query = query.Trim().Trim('"');
+        var queryKey = SearchKey(query);
         var clean = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var name = Path.GetFileName(clean);
         var extension = Path.GetExtension(name);
         var launchable = IsLaunchable(extension);
-        var comparableName = launchable ? Path.GetFileNameWithoutExtension(name) : name;
-        var score = String.Equals(comparableName, query, StringComparison.OrdinalIgnoreCase) ? 120 :
-            comparableName.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 40 : 0;
+        var comparableName = SearchKey(launchable ? Path.GetFileNameWithoutExtension(name) : name);
+        var score = queryKey.Length > 0 && String.Equals(comparableName, queryKey, StringComparison.Ordinal) ? 120 :
+            queryKey.Length > 0 && comparableName.StartsWith(queryKey, StringComparison.Ordinal) ? 40 :
+            queryKey.Length > 0 && comparableName.IndexOf(queryKey, StringComparison.Ordinal) >= 0 ? 20 : 0;
         if (launchable) score += 50;
         if (File.Exists(clean)) score += 50;
 
@@ -120,6 +151,24 @@ internal sealed class SearchClient
             IsUnder(path, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86))) &&
             !MentionsAny(query, "Program Files")) return score - 50;
         return score;
+    }
+
+    private static string LaunchableNameKey(string path)
+    {
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var extension = Path.GetExtension(name);
+        if (!String.Equals(extension, ".lnk", StringComparison.OrdinalIgnoreCase) &&
+            !String.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase)) return null;
+        var key = SearchKey(Path.GetFileNameWithoutExtension(name));
+        return key.Length == 0 ? null : key;
+    }
+
+    private static string SearchKey(string value)
+    {
+        var key = new StringBuilder();
+        foreach (var character in value)
+            if (Char.IsLetterOrDigit(character)) key.Append(Char.ToUpperInvariant(character));
+        return key.ToString();
     }
 
     private static bool IsLaunchable(string extension)
