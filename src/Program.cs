@@ -90,6 +90,11 @@ internal static class Program
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
             }, 100);
             if (explicitProgramData[0] != Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)) return 1;
+            var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            var downRanked = SearchClient.RankResults("down", new List<string> { Path.Combine(Path.GetTempPath(), "down.exe") }, 1);
+            var downloadRanked = SearchClient.RankResults("download", new List<string>(), 1);
+            if (downRanked.Count != 1 || downRanked[0] != downloads ||
+                downloadRanked.Count != 1 || downloadRanked[0] != downloads) return 1;
             var rankedFile = Path.GetTempFileName();
             try
             {
@@ -125,6 +130,10 @@ internal static class Program
                 !LauncherForm.WebSearchUrl("火柴").StartsWith("https://www.google.com/search", StringComparison.Ordinal)) return 1;
             var defaults = ShortcutStore.Defaults();
             if (defaults.Count != 2 || defaults[0].Name != "桌面" || defaults[1].Name != "下载") return 1;
+            var registered = RegisteredApplicationStore.Load();
+            for (var index = 0; index < registered.Count; index++)
+                if (!File.Exists(registered[index].Target) || (index > 0 &&
+                    StringComparer.CurrentCultureIgnoreCase.Compare(registered[index - 1].Name, registered[index].Name) > 0)) return 1;
             if (LauncherForm.ListFolder(AppDomain.CurrentDomain.BaseDirectory).Count == 0) return 1;
             if (Ui.WebsiteIconPath("https://chatgpt.com/a") != Ui.WebsiteIconPath("https://chatgpt.com/b") ||
                 Ui.WebsiteIconPath("C:\\temp") != null) return 1;

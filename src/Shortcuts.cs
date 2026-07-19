@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 internal sealed class ShortcutItem
 {
@@ -72,6 +73,56 @@ internal sealed class UrlShortcutDialog : Form
         Controls.Add(cancel);
         AcceptButton = okay;
         CancelButton = cancel;
+    }
+}
+
+internal static class RegisteredApplicationStore
+{
+    private const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\App Paths";
+
+    internal static List<ShortcutItem> Load()
+    {
+        var applications = new List<ShortcutItem>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Add(applications, seen, RegistryHive.CurrentUser, RegistryView.Registry64);
+        Add(applications, seen, RegistryHive.CurrentUser, RegistryView.Registry32);
+        Add(applications, seen, RegistryHive.LocalMachine, RegistryView.Registry64);
+        Add(applications, seen, RegistryHive.LocalMachine, RegistryView.Registry32);
+        applications.Sort(delegate(ShortcutItem left, ShortcutItem right)
+        {
+            var named = StringComparer.CurrentCultureIgnoreCase.Compare(left.Name, right.Name);
+            return named != 0 ? named : StringComparer.OrdinalIgnoreCase.Compare(left.Target, right.Target);
+        });
+        return applications;
+    }
+
+    private static void Add(List<ShortcutItem> applications, HashSet<string> seen, RegistryHive hive, RegistryView view)
+    {
+        try
+        {
+            using (var root = RegistryKey.OpenBaseKey(hive, view))
+            using (var appPaths = root.OpenSubKey(KeyPath))
+            {
+                if (appPaths == null) return;
+                foreach (var keyName in appPaths.GetSubKeyNames())
+                using (var application = appPaths.OpenSubKey(keyName))
+                {
+                    var target = application == null ? null : application.GetValue(String.Empty) as string;
+                    if (String.IsNullOrWhiteSpace(target)) continue;
+                    target = Environment.ExpandEnvironmentVariables(target.Trim().Trim('"'));
+                    if (!File.Exists(target) || !seen.Add(target)) continue;
+                    var name = Path.GetFileNameWithoutExtension(keyName);
+                    try
+                    {
+                        var description = FileVersionInfo.GetVersionInfo(target).FileDescription;
+                        if (!String.IsNullOrWhiteSpace(description)) name = description.Trim();
+                    }
+                    catch { }
+                    applications.Add(new ShortcutItem(name, target));
+                }
+            }
+        }
+        catch { }
     }
 }
 

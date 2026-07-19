@@ -90,12 +90,20 @@ internal sealed class SearchClient
 
     internal static List<string> RankResults(string query, List<string> paths, int maximum)
     {
+        var normalized = query.Trim().Trim('"');
+        var preferred = String.Equals(normalized, "down", StringComparison.OrdinalIgnoreCase) ||
+            String.Equals(normalized, "download", StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads") : null;
+        if (preferred != null && !paths.Exists(delegate(string path)
+            { return String.Equals(path, preferred, StringComparison.OrdinalIgnoreCase); })) paths.Insert(0, preferred);
+
         var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < paths.Count; index++)
         {
             if (!order.ContainsKey(paths[index])) order.Add(paths[index], index);
-            scores[paths[index]] = RankScore(query, paths[index]);
+            scores[paths[index]] = preferred != null && String.Equals(paths[index], preferred, StringComparison.OrdinalIgnoreCase)
+                ? Int32.MaxValue : RankScore(query, paths[index]);
         }
         paths.Sort(delegate(string left, string right)
         {

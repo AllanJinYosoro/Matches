@@ -60,7 +60,7 @@ internal sealed partial class LauncherForm : Form
 
         Text = "Matches";
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        ClientSize = new Size(808, 540);
+        ClientSize = new Size(900, 600);
         StartPosition = FormStartPosition.Manual;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -168,6 +168,9 @@ internal sealed partial class LauncherForm : Form
         addTile.BringToFront();
         settings.BringToFront();
 
+        var registeredApps = new ToolStripMenuItem("从已安装软件添加");
+        registeredApps.DropDownOpening += delegate { PopulateRegisteredAppsMenu(registeredApps); };
+        addMenu.Items.Add(registeredApps);
         addMenu.Items.Add("添加文件或程序", null, delegate { AddFileShortcut(); });
         addMenu.Items.Add("添加文件夹", null, delegate { AddFolderShortcut(); });
         addMenu.Items.Add("添加网页网址", null, delegate { AddUrlShortcut(); });
